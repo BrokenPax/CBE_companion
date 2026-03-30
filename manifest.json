@@ -1,11 +1,10 @@
 {
   "name": "Cross Bronx NP Companion",
   "short_name": "CBE NP",
-  "start_url": ".",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#0f172a",
-  "description": "Prompt-driven non-player companion for Cross Bronx Expressway.",
   "icons": [
     {
       "src": "icon-192.png",
