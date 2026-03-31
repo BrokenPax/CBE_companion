@@ -7,43 +7,22 @@
   <title>Cross Bronx NP Companion</title>
   <link rel="manifest" href="manifest.json" />
   <style>
-    :root{
-      --bg:#f8fafc; --card:#ffffff; --text:#0f172a; --muted:#64748b; --line:#e2e8f0;
-      --blue:#163a8a; --blue2:#1e3a8a; --public:#38bdf8; --community:#f97316; --private:#facc15;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
-    .app{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:24px}
-    .top{position:sticky;top:0;background:rgba(248,250,252,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:10}
-    .topin{display:flex;align-items:center;justify-content:space-between;padding:12px 16px}
-    .iconbtn{border:0;background:transparent;font-size:20px;padding:8px 10px;border-radius:12px}
-    .title{font-size:14px;font-weight:700}
-    .wrap{padding:16px}
-    .card{background:var(--card);border-radius:24px;box-shadow:0 3px 16px rgba(15,23,42,.08);padding:18px;margin-bottom:16px}
-    .row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;color:#fff;font-size:12px;font-weight:700}
-    .pub{background:var(--public);color:#082f49}.com{background:var(--community)}.pri{background:var(--private);color:#422006}
+    :root{--bg:#f8fafc;--card:#ffffff;--text:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#163a8a;--blue2:#1e3a8a;--public:#38bdf8;--community:#f97316;--private:#facc15}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+    .app{max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:24px}.top{position:sticky;top:0;background:rgba(248,250,252,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:10}
+    .topin{display:flex;align-items:center;justify-content:space-between;padding:12px 16px}.iconbtn{border:0;background:transparent;font-size:20px;padding:8px 10px;border-radius:12px}
+    .title{font-size:14px;font-weight:700}.wrap{padding:16px}.card{background:var(--card);border-radius:24px;box-shadow:0 3px 16px rgba(15,23,42,.08);padding:18px;margin-bottom:16px}
+    .row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.pill{display:inline-block;padding:4px 10px;border-radius:999px;color:#fff;font-size:12px;font-weight:700}
+    .pub{background:#38bdf8;color:#082f49}.com{background:#f97316}.pri{background:#facc15;color:#422006}
     .ring-pub{outline:2px solid rgba(56,189,248,.35)} .ring-com{outline:2px solid rgba(249,115,22,.35)} .ring-pri{outline:2px solid rgba(250,204,21,.35)}
-    h1,h2,h3,p{margin:0}
-    h2{font-size:18px;margin-bottom:6px}
-    .muted{color:var(--muted);font-size:14px}
+    h1,h2,h3,p{margin:0} h2{font-size:18px;margin-bottom:6px}.muted{color:var(--muted);font-size:14px}
     .btn{width:100%;min-height:52px;border-radius:18px;border:1px solid var(--line);background:#fff;padding:12px 14px;text-align:left;font-size:16px}
-    .btn.primary{background:#0f172a;color:#fff;border-color:#0f172a}
-    .btn.secondary{background:#eef2ff}
-    .grid{display:grid;gap:12px}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-    .small{font-size:12px;color:var(--muted)}
-    .panel{background:#f1f5f9;border-radius:18px;padding:14px}
-    .bluepanel{background:#eff6ff;border-radius:18px;padding:14px;color:#172554}
-    .progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
-    .bar{height:100%;background:#0f172a}
-    .titleblue{color:var(--blue);font-size:18px;font-weight:800}
-    .objblue{color:var(--blue2);font-size:14px;font-weight:600}
-    .trace{background:#f1f5f9;border-radius:16px;padding:10px 12px;font-size:14px}
-    .hint{border:1px dashed #cbd5e1;border-radius:18px;padding:14px;font-size:14px;color:#475569}
-    .badge{font-size:12px;background:#f1f5f9;border-radius:999px;padding:4px 10px}
-    .selected{background:#0f172a !important;color:#fff !important}
+    .btn.primary{background:#0f172a;color:#fff;border-color:#0f172a}.btn.secondary{background:#eef2ff}
+    .grid{display:grid;gap:12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .small{font-size:12px;color:var(--muted)}.panel{background:#f1f5f9;border-radius:18px;padding:14px}.bluepanel{background:#eff6ff;border-radius:18px;padding:14px;color:#172554}
+    .progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}.bar{height:100%;background:#0f172a}
+    .titleblue{color:var(--blue);font-size:18px;font-weight:800}.objblue{color:var(--blue2);font-size:14px;font-weight:600}.trace{background:#f1f5f9;border-radius:16px;padding:10px 12px;font-size:14px}
+    .hint{border:1px dashed #cbd5e1;border-radius:18px;padding:14px;font-size:14px;color:#475569}.badge{font-size:12px;background:#f1f5f9;border-radius:999px;padding:4px 10px}.selected{background:#0f172a !important;color:#fff !important}
   </style>
 </head>
 <body>

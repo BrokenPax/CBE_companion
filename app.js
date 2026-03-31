@@ -16,6 +16,7 @@ const state = {
   playerFaction:null,
   selectedFaction:null,
   npCards:{public:null,community:null,private:null},
+  npPlannedActions:{public:null,community:null,private:null},
   mode:"act",
   rowIndex:0,
   stage:"condition",
@@ -44,7 +45,7 @@ function resetResolver(){
   state.districtChoice=null; state.showHint=false;
 }
 function resetAll(){
-  state.screen="home"; state.playerFaction=null; state.selectedFaction=null; state.npCards={public:null,community:null,private:null}; state.mode="act"; resetResolver(); render();
+  state.screen="home"; state.playerFaction=null; state.selectedFaction=null; state.npCards={public:null,community:null,private:null}; state.npPlannedActions={public:null,community:null,private:null}; state.mode="act"; resetResolver(); render();
 }
 function back(){
   const s=state.screen;
@@ -53,6 +54,7 @@ function back(){
   else if(s==="setup_np_card") state.screen = state.playerFaction ? "setup_player":"home";
   else if(s==="dashboard") state.screen="setup_player";
   else if(s==="mode") state.screen="dashboard";
+  else if(s==="plan_helper"||s==="event_helper") state.screen="mode";
   else if(s==="resolver") state.screen="mode";
   else if(s==="result") state.screen="dashboard";
   render();
@@ -65,7 +67,7 @@ function cardBlock(title, body){ return `<div class="card">${title?`<h2>${title}
 function btn(label, onclick, klass=""){ return `<button class="btn ${klass}" onclick="${onclick}">${label}</button>`; }
 
 function choosePlayerFaction(f){
-  state.playerFaction=f; state.npCards={public:null,community:null,private:null}; resetResolver();
+  state.playerFaction=f; state.npCards={public:null,community:null,private:null}; state.npPlannedActions={public:null,community:null,private:null}; resetResolver();
   state.selectedFaction=npFactions()[0]; state.screen="setup_np_card"; render();
 }
 function chooseNpcCard(id){
@@ -76,7 +78,31 @@ function chooseNpcCard(id){
   render();
 }
 function startResolver(f){ state.selectedFaction=f; resetResolver(); state.screen="mode"; render(); }
-function startModeResolution(){ resetResolver(); state.screen="resolver"; render(); }
+function startModeResolution(){ 
+  resetResolver(); 
+  if(state.mode==="plan"){ state.screen="plan_helper"; render(); return; }
+  if(state.mode==="event"){ state.screen="event_helper"; render(); return; }
+  state.screen="resolver"; 
+  render(); 
+}
+
+function recordPlannedAction(nextAction){
+  if(!state.selectedFaction) return;
+  state.npPlannedActions[state.selectedFaction]=nextAction;
+  state.result={
+    status:"resolved",
+    title:`PLAN recorded for ${factions[state.selectedFaction].label} NP`,
+    body:`Complete the PLAN procedure: do not call an Audit for an NP PLAN. Refresh an Organization if possible, then use ${nextAction.toUpperCase()} as the next main action for this NP faction.`,
+    trace:[
+      `PLAN selected for ${factions[state.selectedFaction].label} NP.`,
+      `NP PLAN does not call an Audit.`,
+      `Refresh an Organization if possible, using Place / Replace / Refresh Organization priorities.`,
+      `Next recorded main action: ${nextAction.toUpperCase()}.`,
+    ]
+  };
+  state.screen="result";
+  render();
+}
 function record(reason){ state.history.push(reason); }
 
 function moveNextRow(reason){
@@ -185,7 +211,7 @@ function render(){
       ${npFactions().map(f => {
         const card = cards[f].find(c => c.id===state.npCards[f]);
         return `<div class="card">
-          <div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}`:"No Position card selected"}</div></div><span class="pill ${factions[f].pill}">${factions[f].short}</span></div>
+          <div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ""}`:"No Position card selected"}</div></div><span class="pill ${factions[f].pill}">${factions[f].short}</span></div>
           <div class="grid2">
             ${btn("Resolve turn", `startResolver('${f}')`, card ? "primary":"")}
             ${btn("Change card", `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`, "outline")}
@@ -193,6 +219,43 @@ function render(){
         </div>`;
       }).join("")}
     `;
+    return;
+  }
+
+  if(state.screen==="plan_helper"){
+    const c = currentCard();
+    app.innerHTML = cardBlock("", `
+      <div class="small">PLAN procedure • ${factions[state.selectedFaction].label} NP</div>
+      <div class="titleblue">${c.name}</div>
+      <div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div>
+      <div class="panel" style="margin-bottom:14px">
+        <div style="font-weight:700">PLAN checklist</div>
+        <div style="margin-top:8px">1. Do <b>not</b> call an Audit for an NP PLAN.</div>
+        <div>2. Refresh an Organization if possible, using the <b>Place / Replace / Refresh Organization</b> priorities.</div>
+        <div>3. Record the next main action for this NP faction.</div>
+      </div>
+      <div class="small" style="margin-bottom:8px">Next main action</div>
+      <div class="grid2">${["act","react","event","plan"].map(m => `<button class="btn" onclick="recordPlannedAction('${m}')">${m.toUpperCase()}</button>`).join("")}</div>
+    `);
+    return;
+  }
+  if(state.screen==="event_helper"){
+    const c = currentCard();
+    app.innerHTML = cardBlock("", `
+      <div class="small">EVENT procedure • ${factions[state.selectedFaction].label} NP</div>
+      <div class="titleblue">${c.name}</div>
+      <div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div>
+      <div class="panel" style="margin-bottom:14px">
+        <div style="font-weight:700">EVENT reminder</div>
+        <div style="margin-top:8px">Refer to the current Event card and resolve its instructions first.</div>
+        <div style="margin-top:8px">Use NP General Principles and NP General Priorities for any choices required by the Event.</div>
+        <div style="margin-top:8px">If given a choice, each faction places its own Infrastructure and Organizations first. NP Public and Community place Grants before Loans; NP Private places Loans before Grants.</div>
+      </div>
+      <div class="grid">
+        ${btn("Done with Event", "state.screen='dashboard'; render()", "primary")}
+        ${btn("Back to mode selection", "state.screen='mode'; render()")}
+      </div>
+    `);
     return;
   }
   if(state.screen==="mode"){
@@ -288,6 +351,7 @@ window.choosePlayerFaction = choosePlayerFaction;
 window.chooseNpcCard = chooseNpcCard;
 window.startResolver = startResolver;
 window.startModeResolution = startModeResolution;
+window.recordPlannedAction = recordPlannedAction;
 window.answerCondition = answerCondition;
 window.answerGate = answerGate;
 window.answerPriority = answerPriority;
