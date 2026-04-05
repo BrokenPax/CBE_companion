@@ -287,7 +287,7 @@ render = function(){
     app.innerHTML = `
       <div class="card">
         <div class="small">Cross Bronx NP Companion</div>
-        <div style="font-size:24px;font-weight:800;margin-bottom:10px">Phase 2 tools</div>
+        <div style="font-size:24px;font-weight:800;margin-bottom:10px">Phase 2 tools • build v3</div>
         <div class="panel" style="margin-bottom:14px">
           <div><b>Selected NP:</b> ${esc(selected)}</div>
           <div style="margin-top:6px"><b>Planned actions:</b></div>
