@@ -266,12 +266,8 @@ recordPlannedAction = function(nextAction){
   const refreshLine = state.planRefreshDistrict
     ? `Refresh Organization in District ${state.planRefreshDistrict}, if possible.`
     : `No legal Organization refresh was identified, so skip the refresh.`;
-  const candidateLine = (state.districtHelper.candidates || []).length < DISTRICTS.length
-    ? `Candidate districts filtered to: ${(state.districtHelper.candidates || []).join(", ") || "none"}.`
-    : `No district filter was applied.`;
   oldRecordPlannedAction(nextAction);
   if(state.result && Array.isArray(state.result.trace)){
-    state.result.trace.unshift(candidateLine);
     state.result.trace.unshift(refreshLine);
     state.result.body = `PLAN resolved. ${refreshLine} Next main action: ${nextAction.toUpperCase()}.`;
   }
@@ -954,8 +950,13 @@ render = function(){
         </div>
       </div>
       <div class="card">
-        <div class="small">You are playing</div>
-        <div style="font-size:22px;font-weight:800;margin-bottom:12px">${factions[state.playerFaction].label}</div>
+        <div class="row" style="margin-bottom:12px">
+          <div>
+            <div class="small">You are playing</div>
+            <div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div>
+          </div>
+          ${pill(factions[state.playerFaction].short,state.playerFaction)}
+        </div>
         <div class="grid2">
           ${btn('Log completed action', "openActionLogger()")}
           ${btn('Save / load state', "state.screen='save_load'; render()")}
@@ -1139,3 +1140,203 @@ window.updateEventNotes = updateEventNotes;
 window.toggleEventDistrict = toggleEventDistrict;
 window.finishEventProtocol = finishEventProtocol;
 render();
+
+
+/* --- Advanced 1940s EVENT preset engine --- */
+const EVENT_PRESETS_40S = {
+  '001': { year: 1940, title: 'Bridge Opening Charts a New Path Forward', order:['private','public','community'], steps:[
+    {kind:'infrastructure', action:'exhaust', amount:1, target:'one_district', text:'Exhaust 1 Infrastructure.'},
+    {kind:'population', action:'move', amount:2, target:'adjacent', text:'Move 2 Population to any adjacent District(s).'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '002': { year: 1941, title: 'U.S. Enters The War', order:['public','private','community'], steps:[
+    {kind:'population', action:'remove', amount:2, target:'any_districts', text:'Remove 2 Population from any District(s).'},
+    {kind:'vulnerability', action:'remove_from_corrections', amount:1, target:'corrections', text:'Remove 1 Vulnerability from Corrections.'}
+  ]},
+  '003': { year: 1942, title: 'Moses Joins City Planning Commission', order:['private','public','community'], steps:[
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'},
+    {kind:'phase', action:'quota', amount:null, target:'none', text:'Perform Quota Phase.'}
+  ]},
+  '004': { year: 1942, title: 'Roosevelt Fixes Prices', order:['public','community','private'], steps:[
+    {kind:'infrastructure', action:'replace_private_with_community', amount:1, target:'one_district', text:'Replace 1 Private Infrastructure with 1 Community Infrastructure.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '005': { year: 1943, title: 'The Bronx Gets New Segregated Housing', order:['private','public','community'], steps:[
+    {kind:'population', action:'remove', amount:2, target:'one_district', text:'Remove 2 Population from one District.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '006': { year: 1944, title: 'Roosevelt Signs Bill to Help Veterans', order:['community','private','public'], steps:[
+    {kind:'organization', action:'place_with_grant_or_loan', amount:1, target:'one_district', text:'Place 1 Organization with a Grant or Loan.'}
+  ]},
+  '007': { year: 1945, title: "They're Coming Home", order:['community','public','private'], steps:[
+    {kind:'population', action:'add', amount:2, target:'any_districts', text:'Add 2 Population to any District(s).'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '008': { year: 1946, title: 'Franco Under Fire in the Bronx', order:['public','private','community'], steps:[
+    {kind:'organization', action:'grant_existing', amount:1, target:'one_district', text:'Give 1 Organization a Grant.'}
+  ]},
+  '009': { year: 1946, title: 'Commercial Flights Bring New Faces', order:['community','private','public'], steps:[
+    {kind:'population', action:'add_each', amount:1, repeat:4, target:'four_districts', text:'Add 1 Population each to four Districts.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '010': { year: 1946, title: "Building America’s Suburban Dream", order:['private','public','community'], steps:[
+    {kind:'organization', action:'activate_private', amount:1, target:'one_district', text:'Activate 1 Private Organization.'},
+    {kind:'population', action:'remove_each', amount:1, repeat:3, target:'three_districts', text:'Remove 1 Population each from three Districts.'},
+    {kind:'resources', action:'increase', amount:2, target:'faction', text:'Increase Resources by 2.'}
+  ]},
+  '011': { year: 1947, title: 'Local Impacts from Operation Bootstrap', order:['community','public','private'], steps:[
+    {kind:'population', action:'add', amount:3, target:'one_district', text:'Add 3 Population to one District.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '012': { year: 1947, title: 'In Like Flynn', order:['public','private','community'], steps:[
+    {kind:'resources', action:'increase', amount:2, target:'faction', text:'Increase Resources by 2.'},
+    {kind:'organization', action:'move', amount:1, target:'any_districts', text:'Move 1 Organization between any Districts.'}
+  ]},
+  '013': { year: 1947, title: 'Puerto Ricans Fight for Rights', order:['community','public','private'], steps:[
+    {kind:'organization', action:'place_with_grant', amount:1, target:'one_district', text:'Place 1 Organization with a Grant.'},
+    {kind:'vulnerability', action:'move', amount:1, target:'any_districts', text:'Move 1 Vulnerability to any District.'}
+  ]},
+  '014': { year: 1949, title: 'Bronx Beaches Go Private', order:['public','private','community'], steps:[
+    {kind:'organization', action:'replace_public_with_private', amount:1, target:'one_district', text:'Replace 1 Public Organization with 1 Private Organization.'},
+    {kind:'resources', action:'increase', amount:1, target:'faction', text:'Increase Resources by 1.'}
+  ]},
+  '015': { year: 1949, title: 'Eminent Domain', order:['public','community','private'], steps:[
+    {kind:'infrastructure', action:'exhaust', amount:1, target:'one_district', text:'Exhaust 1 Infrastructure.'},
+    {kind:'organization', action:'remove', amount:1, target:'one_district', text:'Remove 1 Organization.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]}
+};
+const EVENT_DECKS = {'1940s': EVENT_PRESETS_40S};
+
+function getEventPreset(){
+  const decade = (state.eventProtocol && state.eventProtocol.decade) || '1940s';
+  const key = state.eventProtocol && state.eventProtocol.cardKey;
+  return key && EVENT_DECKS[decade] ? EVENT_DECKS[decade][key] : null;
+}
+function ensureEventProtocolShape(){
+  if(!state.eventProtocol) resetEventProtocol();
+  state.eventProtocol.decade = state.eventProtocol.decade || '1940s';
+  state.eventProtocol.cardKey = state.eventProtocol.cardKey || '';
+  state.eventProtocol.stepDistricts = state.eventProtocol.stepDistricts || {};
+  state.eventProtocol.stepNotes = state.eventProtocol.stepNotes || {};
+}
+const _oldResetEventProtocol = resetEventProtocol;
+resetEventProtocol = function(){
+  _oldResetEventProtocol();
+  state.eventProtocol.decade = '1940s';
+  state.eventProtocol.cardKey = '';
+  state.eventProtocol.stepDistricts = {};
+  state.eventProtocol.stepNotes = {};
+};
+function setEventDecade(v){ ensureEventProtocolShape(); state.eventProtocol.decade = v; state.eventProtocol.cardKey=''; state.eventProtocol.card=''; state.eventProtocol.stepDistricts={}; state.eventProtocol.stepNotes={}; render(); }
+function chooseEventCardPreset(key){
+  ensureEventProtocolShape();
+  state.eventProtocol.cardKey = key;
+  const preset = getEventPreset();
+  if(preset){
+    state.eventProtocol.card = `${key} • ${preset.title}`;
+    state.eventProtocol.effect = 'mixed';
+    state.eventProtocol.targeting = 'preset';
+    state.eventProtocol.piece = 'mixed';
+    state.eventProtocol.districts = [];
+    state.eventProtocol.notes = '';
+    state.eventProtocol.stepDistricts = Object.fromEntries(preset.steps.map((_, idx)=>[String(idx), []]));
+    state.eventProtocol.stepNotes = Object.fromEntries(preset.steps.map((_, idx)=>[String(idx), '']));
+  }
+  render();
+}
+function eventTargetHelp(step){
+  const labels = {
+    one_district:'Pick the single District affected.',
+    any_districts:'Pick the District or Districts affected.',
+    adjacent:'Pick the destination District or Districts. Note adjacency in the step note if needed.',
+    four_districts:'Pick four Districts if known.',
+    three_districts:'Pick three Districts if known.',
+    corrections:'No District selection needed; this step hits Corrections.',
+    faction:'No District selection needed; this step hits faction resources.',
+    none:'No District selection needed.'
+  };
+  return labels[step.target] || 'Select the affected Districts.';
+}
+function shouldShowStepDistricts(step){ return !['corrections','faction','none'].includes(step.target); }
+function toggleEventStepDistrict(idx, d){
+  ensureEventProtocolShape();
+  const key = String(idx);
+  const set = new Set(state.eventProtocol.stepDistricts[key] || []);
+  if(set.has(d)) set.delete(d); else set.add(d);
+  state.eventProtocol.stepDistricts[key] = DISTRICTS.filter(x => set.has(x));
+  render();
+}
+function updateEventStepNote(idx, value){ ensureEventProtocolShape(); state.eventProtocol.stepNotes[String(idx)] = value; }
+function summarizeEventStep(step, idx){
+  const ds = ((state.eventProtocol.stepDistricts||{})[String(idx)] || []);
+  const note = ((state.eventProtocol.stepNotes||{})[String(idx)] || '').trim();
+  const districtText = ds.length ? `Districts: ${ds.map(d=>`D${d}`).join(', ')}.` : (shouldShowStepDistricts(step) ? 'Districts still unresolved.' : 'No District selection needed.');
+  return `${idx+1}. ${step.text} ${districtText}${note ? ` Note: ${note}` : ''}`;
+}
+const _oldFinishEventProtocol = finishEventProtocol;
+finishEventProtocol = function(){
+  ensureEventProtocolShape();
+  const preset = getEventPreset();
+  if(!preset) return _oldFinishEventProtocol();
+  resetLogDraft();
+  const ep = state.eventProtocol;
+  state.logDraft.faction = ep.faction || state.selectedFaction || state.playerFaction || 'public';
+  state.logDraft.mode = 'event';
+  const allDistricts = [];
+  const changes = new Set();
+  preset.steps.forEach((step, idx)=>{
+    (((ep.stepDistricts||{})[String(idx)] || [])).forEach(d=>{ if(!allDistricts.includes(d)) allDistricts.push(d); });
+    if(step.kind === 'population') changes.add('population');
+    if(step.kind === 'vulnerability') changes.add('vulnerability');
+    if(step.kind === 'organization') changes.add('organization');
+    if(step.kind === 'infrastructure') changes.add('infrastructure');
+    if(['phase','resources'].includes(step.kind) || /grant|loan/i.test(step.action||'')) changes.add('markers');
+  });
+  state.logDraft.districts = allDistricts;
+  for (const key of changes) state.logDraft.changes[key] = true;
+  const orderText = preset.order.map(f=>factions[f].short).join(' → ');
+  state.logDraft.notes = [`${ep.card || `${ep.cardKey} • ${preset.title}`}`, `Year: ${preset.year}`, `Order: ${orderText}`, ...preset.steps.map((step, idx)=>summarizeEventStep(step, idx)), ep.notes || ''].filter(Boolean).join(' | ');
+  state.screen = 'log_action';
+  render();
+};
+
+const _renderEventEnhanced = render;
+render = function(){
+  const app = document.getElementById('app');
+  if(state.screen === 'event_protocol'){
+    ensureEventProtocolShape();
+    const ep = state.eventProtocol;
+    const preset = getEventPreset();
+    const cardButtons = Object.entries(EVENT_DECKS[ep.decade] || {}).map(([key, card])=>`<button class="btn ${ep.cardKey===key?'selected':''}" onclick="chooseEventCardPreset('${key}')"><div style="font-weight:700">${key} • ${esc(card.title)}</div><div class="small">${card.year}</div></button>`).join('');
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">EVENT branch for ${factions[ep.faction || state.selectedFaction || state.playerFaction].label}</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Advanced EVENT protocol</div>
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:8px">Deck preset</div>
+          <div class="grid2" style="margin-bottom:10px">
+            ${btn('1940s deck', "setEventDecade('1940s')", ep.decade==='1940s' ? 'primary' : '')}
+            ${btn('Generic manual', "setEventDecade('generic')", ep.decade==='generic' ? 'primary' : '')}
+          </div>
+          <div class="small">The 1940s scans are wired as presets. Generic manual mode is still available for uncoded cards.</div>
+        </div>
+        ${ep.decade==='1940s' ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Choose 1940s event card</div><div class="grid2">${cardButtons}</div></div>` : ''}
+        ${preset ? `<div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div><div style="font-size:18px;font-weight:700">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small">${preset.year} • Order: ${preset.order.map(f=>factions[f].short).join(' → ')}</div></div><span class="badge">${preset.steps.length} step${preset.steps.length===1?'':'s'}</span></div>${preset.steps.map((step, idx)=>`<div class="panel" style="margin-top:12px"><div style="font-size:12px;text-transform:uppercase;opacity:.75">Step ${idx+1}</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(step.text)}</div><div class="small" style="margin-top:6px">${esc(eventTargetHelp(step))}</div>${shouldShowStepDistricts(step) ? `<div class="grid4" style="margin-top:10px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[String(idx)]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : ''}<textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:72px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="Optional note: adjacency, source district, which org, loan/grant details, etc.">${esc(((ep.stepNotes||{})[String(idx)] || ''))}</textarea></div>`).join('')}</div>` : ''}
+        ${ep.decade==='generic' ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Generic manual mode</div><div class="small" style="margin-bottom:8px">Use this for uncoded decks. The older generic EVENT fields still work here.</div><input value="${esc(ep.card || '')}" oninput="setEventField('card', this.value)" placeholder="Card number / title" style="width:100%;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit"></div>` : ''}
+        <textarea oninput="updateEventNotes(this.value)" style="width:100%;min-height:96px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit" placeholder="Overall event notes">${esc(ep.notes || '')}</textarea>
+        <div class="grid2" style="margin-top:14px">
+          ${btn(state.eventProtocol.fromResolver ? 'Back to mode selection' : 'Back to dashboard', state.eventProtocol.fromResolver ? "state.screen='mode'; render()" : "state.screen='dashboard'; render()")}
+          ${btn(preset ? 'Prefill EVENT log from preset' : 'Prefill EVENT log', 'finishEventProtocol()', 'primary')}
+        </div>
+      </div>`;
+    return;
+  }
+  _renderEventEnhanced();
+};
+window.setEventDecade = setEventDecade;
+window.chooseEventCardPreset = chooseEventCardPreset;
+window.toggleEventStepDistrict = toggleEventStepDistrict;
+window.updateEventStepNote = updateEventStepNote;
+window.finishEventProtocol = finishEventProtocol;
+window.render = render;
