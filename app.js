@@ -53,8 +53,8 @@ function choosePlanDistrict(d){ state.planDistrictChoice=d; render(); }
 function answerPlanDistrict(answer){ const bullet=currentPlanBullet(); if(!bullet) return; if(answer==="not_sure"){ state.showHint=true; render(); return; } if(answer==="still_tied"){ if(state.planPriorityStep >= planPriorityColumn().bullets.length-1){ state.planTrace=[...state.planTrace,`Bullet '${bullet}' still left multiple districts tied after the final priority.`]; state.planRefreshDistrict=null; state.planStep="action"; state.showHint=false; render(); return; } state.planTrace=[...state.planTrace,`Bullet '${bullet}' still left multiple districts tied.`]; state.planPriorityStep += 1; state.planStep="priority"; state.planDistrictChoice=null; state.showHint=false; render(); return; } if(answer==="none"){ state.planTrace=[...state.planTrace,`No district qualified for refresh at bullet '${bullet}'.`]; state.planRefreshDistrict=null; state.planStep="action"; state.showHint=false; render(); return; } state.planRefreshDistrict=answer; state.planTrace=[...state.planTrace,`Refresh bullet '${bullet}' selected District ${answer}.`]; state.planStep="action"; state.showHint=false; render(); }
 
 function recordStep(reason){ state.history.push({rowIndex:state.rowIndex, stage:state.stage, reason}); }
-function pushResolverSnapshot(){ state.resolverSnapshots.push({ rowIndex:state.rowIndex, stage:state.stage, priorityStep:state.priorityStep, districtChoice:state.districtChoice, showHint:state.showHint, history:JSON.parse(JSON.stringify(state.history)), selectedTargets:[...state.selectedTargets] }); }
-function stepBackResolver(){ if(!state.resolverSnapshots.length) return; const prev=state.resolverSnapshots.pop(); state.rowIndex=prev.rowIndex; state.stage=prev.stage; state.priorityStep=prev.priorityStep; state.districtChoice=prev.districtChoice; state.selectedTargets=prev.selectedTargets||[]; state.showHint=prev.showHint; state.history=prev.history; render(); }
+function pushResolverSnapshot(){ state.resolverSnapshots.push({ rowIndex:state.rowIndex, stage:state.stage, priorityStep:state.priorityStep, districtChoice:state.districtChoice, showHint:state.showHint, history:JSON.parse(JSON.stringify(state.history)), selectedTargets:[...state.selectedTargets], resolverCandidates:[...(state.resolverCandidates||[])], resolverPool:[...(state.resolverPool||[])] }); }
+function stepBackResolver(){ if(!state.resolverSnapshots.length) return; const prev=state.resolverSnapshots.pop(); state.rowIndex=prev.rowIndex; state.stage=prev.stage; state.priorityStep=prev.priorityStep; state.districtChoice=prev.districtChoice; state.selectedTargets=prev.selectedTargets||[]; state.showHint=prev.showHint; state.history=prev.history; state.resolverCandidates=prev.resolverCandidates||[...DISTRICTS]; state.resolverPool=prev.resolverPool||[...DISTRICTS]; render(); }
 function buildTrace(extra=[]){ const out=[...state.history.map(h=>h.reason).filter(Boolean), ...extra.filter(Boolean)]; return out.length?out:["No rules trace was captured for this result."]; }
 function moveToNextRow(reason){ const c=currentCard(), r=currentRow(); if(!c||!r) return; state.history=[...state.history, {rowIndex:state.rowIndex, stage:state.stage, reason}]; if(state.rowIndex >= c.rows.length-1){ state.result={status:"discard", title:`Discard ${c.name}`, body:"No listed action was both applicable and effective. Draw a new Position card for this NP faction.", trace:state.history.map(h=>h.reason).filter(Boolean)}; state.screen="result"; render(); return; } state.rowIndex += 1; state.stage="condition"; state.priorityStep=0; state.districtChoice=null; state.showHint=false; render(); }
 
@@ -572,7 +572,17 @@ Object.assign(state, {
     changes: { population: false, vulnerability: false, organization: false, infrastructure: false, markers: false, resources: false },
     notes: ''
   },
-  resolverCandidates: state.resolverCandidates || [...DISTRICTS]
+  eventProtocol: state.eventProtocol || {
+    card: '',
+    effect: 'place',
+    targeting: 'priority',
+    districts: [],
+    piece: 'organization',
+    housing: 'ask',
+    notes: ''
+  },
+  resolverCandidates: state.resolverCandidates || [...DISTRICTS],
+  resolverPool: state.resolverPool || [...DISTRICTS]
 });
 
 const originalStartResolver_v2 = startResolver;
@@ -580,6 +590,7 @@ startResolver = function(f){
   state.selectedFaction = f;
   resetResolverState();
   state.resolverCandidates = [...DISTRICTS];
+  state.resolverPool = [...DISTRICTS];
   if(state.roundTracker && state.roundTracker.critical === null){
     state.roundTracker.pendingScreen = 'mode';
     state.screen = 'round_gate';
@@ -601,9 +612,18 @@ startModeResolution = function(){
   originalStartModeResolution_v2();
 };
 
+const originalAnswerGate_v2 = answerGate;
+answerGate = function(answer){
+  if(answer === 'yes'){
+    state.resolverPool = [...(state.resolverCandidates || DISTRICTS)];
+    state.resolverCandidates = [...state.resolverPool];
+  }
+  originalAnswerGate_v2(answer);
+};
+
 const originalBack_v2 = back;
 back = function(){
-  if(state.screen === 'round_gate' || state.screen === 'log_action'){
+  if(state.screen === 'round_gate' || state.screen === 'log_action' || state.screen === 'event_protocol'){
     state.screen = 'dashboard';
     render();
     return;
@@ -624,18 +644,77 @@ resetAll = function(){
       changes: { population: false, vulnerability: false, organization: false, infrastructure: false, markers: false, resources: false },
       notes: ''
     },
-    resolverCandidates: [...DISTRICTS]
+    eventProtocol: {
+      card: '',
+      effect: 'place',
+      targeting: 'priority',
+      districts: [],
+      piece: 'organization',
+      housing: 'ask',
+      notes: ''
+    },
+    resolverCandidates: [...DISTRICTS],
+    resolverPool: [...DISTRICTS]
   });
   render();
 };
 
 const originalAnswerPriority_v2 = answerPriority;
 answerPriority = function(answer){
-  if(answer === 'yes'){
-    state.resolverCandidates = [...DISTRICTS];
+  if(answer === 'not_sure'){
+    originalAnswerPriority_v2(answer);
+    return;
   }
   originalAnswerPriority_v2(answer);
 };
+
+function applyPriorityDistricts(){
+  const row = currentRow(), pr = currentPriority(), bullet = currentPriorityBullet();
+  const pool = [...(state.resolverPool || state.resolverCandidates || [])];
+  const survivors = [...(state.resolverCandidates || [])];
+  if(!row || !pr || !bullet) return;
+  if(survivors.length === 0){
+    if(state.priorityStep >= pr.bullets.length - 1){
+      state.result = {
+        status: 'resolved',
+        title: `${row.action} needs manual tie-break`,
+        body: 'No matching district was confirmed on the final priority bullet. Use player choice among legal districts, or draw a new Position card if no legal spaces remain.',
+        trace: buildTrace([`${row.action} passed the basic effectiveness gate.`, `Checked priority column: ${pr.title}.`, `Final bullet '${bullet}' produced no matching districts.`])
+      };
+      state.screen = 'result';
+      render();
+      return;
+    }
+    state.history = [...state.history, { rowIndex: state.rowIndex, stage: 'priority', reason: `Bullet '${bullet}' matched no districts. Continue to the next bullet with the same candidate pool.` }];
+    state.priorityStep += 1;
+    state.resolverPool = [...pool];
+    state.resolverCandidates = [...pool];
+    state.showHint = false;
+    render();
+    return;
+  }
+  if(survivors.length === 1){
+    answerDistrict(survivors[0]);
+    return;
+  }
+  if(state.priorityStep >= pr.bullets.length - 1){
+    state.result = {
+      status: 'resolved',
+      title: `${row.action} needs manual tie-break`,
+      body: `The final priority bullet still left multiple districts tied: ${survivors.map(d => `District ${d}`).join(', ')}. Use player choice among the tied districts.`,
+      trace: buildTrace([`${row.action} passed the basic effectiveness gate.`, `Checked priority column: ${pr.title}.`, `Final bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')} but did not produce a single winner.`])
+    };
+    state.screen = 'result';
+    render();
+    return;
+  }
+  state.history = [...state.history, { rowIndex: state.rowIndex, stage: 'priority', reason: `Bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')}.` }];
+  state.priorityStep += 1;
+  state.resolverPool = [...survivors];
+  state.resolverCandidates = [...survivors];
+  state.showHint = false;
+  render();
+}
 
 function setRoundCritical(v){
   state.roundTracker.critical = v;
@@ -705,6 +784,68 @@ function saveLoggedAction(){
   state.screen = 'result';
   render();
 }
+
+function resetEventProtocol(){
+  state.eventProtocol = {
+    card: '',
+    effect: 'place',
+    targeting: 'priority',
+    districts: [],
+    piece: 'organization',
+    housing: 'ask',
+    notes: ''
+  };
+}
+function openEventProtocol(){
+  if(state.roundTracker && state.roundTracker.critical === null){
+    state.roundTracker.pendingScreen = 'event_protocol';
+    state.screen = 'round_gate';
+    render();
+    return;
+  }
+  resetEventProtocol();
+  state.screen = 'event_protocol';
+  render();
+}
+function setEventField(key, value){ state.eventProtocol[key] = value; render(); }
+function updateEventNotes(v){ state.eventProtocol.notes = v; }
+function toggleEventDistrict(d){
+  const set = new Set(state.eventProtocol.districts || []);
+  if(set.has(d)) set.delete(d); else set.add(d);
+  state.eventProtocol.districts = DISTRICTS.filter(x => set.has(x));
+  render();
+}
+function eventProtocolTrace(ep){
+  const effectLabels = { place:'Place', move:'Move', remove:'Remove', exhaust:'Exhaust / replace infrastructure', marker:'Marker / financing shift', mixed:'Mixed / custom' };
+  const targetingLabels = { fixed:'Fixed district from card', priority:'NP priority pairing', manual:'Manual choice', global:'All eligible districts' };
+  const pieceLabels = { population:'Population', vulnerability:'Vulnerability', organization:'Organization', infrastructure:'Infrastructure', marker:'Loan / grant / petition / blight / coalition' };
+  const housingNotes = { ask:'Ask housing / coalition follow-up', housed:'Place housed if possible', unhoused:'Leave unhoused / unresolved until player assigns' };
+  const trace = [
+    `Event card: ${ep.card || 'unnamed event'}.`,
+    `Effect type: ${effectLabels[ep.effect] || ep.effect}.`,
+    `Targeting mode: ${targetingLabels[ep.targeting] || ep.targeting}.`,
+    `Primary piece change: ${pieceLabels[ep.piece] || ep.piece}.`
+  ];
+  if(ep.districts && ep.districts.length) trace.push(`Affected district${ep.districts.length === 1 ? '' : 's'}: ${ep.districts.map(d => `District ${d}`).join(', ')}.`);
+  if(ep.effect === 'place' || ep.effect === 'move' || ep.effect === 'exhaust') trace.push(housingNotes[ep.housing] || ep.housing);
+  if(ep.targeting === 'priority') trace.push('Use the same district-centric bullet elimination flow as normal NP district selection.');
+  if(ep.piece === 'organization') trace.push('If a loan or grant is waiting in the district, the next placed Organization should attach to it if legal.');
+  if(ep.piece === 'infrastructure') trace.push('After placing or replacing Infrastructure, house as many eligible unhoused pieces as possible.');
+  if(ep.notes) trace.push(`Notes: ${ep.notes}`);
+  return trace;
+}
+function finishEventProtocol(){
+  const ep = state.eventProtocol;
+  const districtSummary = ep.targeting === 'global' ? 'all eligible districts' : (ep.districts && ep.districts.length ? ep.districts.map(d => `District ${d}`).join(', ') : 'districts still to be chosen');
+  state.result = {
+    status: 'resolved',
+    title: 'EVENT protocol prepared',
+    body: `Resolve the event as a ${ep.effect.toUpperCase()} effect on ${districtSummary}. Then log the resulting board changes.`,
+    trace: eventProtocolTrace(ep)
+  };
+  state.screen = 'result';
+  render();
+}
 function advanceRound(){
   if(state.roundTracker.round >= state.roundTracker.max){
     state.screen = 'census_helper';
@@ -739,12 +880,14 @@ function finishCensusCycle(){
   render();
 }
 function toggleResolverCandidate(d){
-  const set = new Set(state.resolverCandidates || DISTRICTS);
+  const pool = state.resolverPool || state.resolverCandidates || DISTRICTS;
+  if(!pool.includes(d)) return;
+  const set = new Set(state.resolverCandidates || pool);
   if(set.has(d)) set.delete(d); else set.add(d);
-  state.resolverCandidates = DISTRICTS.filter(x => set.has(x));
+  state.resolverCandidates = pool.filter(x => set.has(x));
   render();
 }
-function resetResolverCandidates(){ state.resolverCandidates = [...DISTRICTS]; render(); }
+function resetResolverCandidates(){ state.resolverCandidates = [...(state.resolverPool || DISTRICTS)]; render(); }
 function confirmResolverCandidates(){
   const left = state.resolverCandidates || [];
   if(left.length === 1){ answerDistrict(left[0]); return; }
@@ -780,6 +923,7 @@ render = function(){
         <div class="grid2">
           ${btn(state.roundTracker.critical === null ? 'Round start: critical event?' : 'Edit round critical check', "state.screen='round_gate'; render()", 'primary')}
           ${btn('Log completed action', "openActionLogger()")}
+          ${btn('EVENT protocol', "openEventProtocol()", state.roundTracker.critical ? 'primary' : '')}
           ${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8 → Census' : `End round ${state.roundTracker.round} → next round`, 'advanceRound()')}
           ${btn('Save / load state', "state.screen='save_load'; render()")}
         </div>
@@ -823,6 +967,7 @@ render = function(){
         <div class="grid2" style="margin-bottom:14px">${Object.keys(factions).map(f=>btn(factions[f].label, `setLogFaction('${f}')`, state.logDraft.faction===f ? 'primary' : '')).join('')}</div>
         <div class="small" style="margin-bottom:8px">Action type</div>
         <div class="grid2" style="margin-bottom:14px">${['act','event','react','plan'].map(m=>btn(m.toUpperCase(), `setLogMode('${m}')`, state.logDraft.mode===m ? 'primary' : '')).join('')}</div>
+        ${state.logDraft.mode === 'event' ? `<div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Need help resolving NP placement for EVENT?</div><div class="grid2">${btn('Open EVENT protocol', 'openEventProtocol()', 'primary')}${btn('Keep logging manually', 'render()')}</div></div>` : ''}
         <div class="small" style="margin-bottom:8px">Affected districts</div>
         <div class="grid4" style="margin-bottom:14px">${DISTRICTS.map(d=>`<button class="btn ${(state.logDraft.districts||[]).includes(d)?'selected':''}" onclick="toggleLogDistrict('${d}')">${d}</button>`).join('')}</div>
         <div class="small" style="margin-bottom:8px">What changed on the board?</div>
@@ -832,6 +977,35 @@ render = function(){
         <div class="grid2" style="margin-top:14px">
           ${btn('Save log entry', 'saveLoggedAction()', 'primary')}
           ${btn('Back to dashboard', "state.screen='dashboard'; render()")}
+        </div>
+      </div>`;
+    return;
+  }
+
+  if(state.screen === 'event_protocol'){
+    const ep = state.eventProtocol;
+    const effectOptions = [['place','Place'],['move','Move'],['remove','Remove'],['exhaust','Exhaust / replace infrastructure'],['marker','Marker / financing shift'],['mixed','Mixed / custom']];
+    const targetingOptions = [['fixed','Fixed district from card'],['priority','Use NP priority pairing'],['manual','Manual choice'],['global','All eligible districts']];
+    const pieceOptions = [['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['marker','Loan / grant / petition / blight / coalition']];
+    const housingOptions = [['ask','Ask housing / coalition follow-up'],['housed','Place housed if possible'],['unhoused','Leave unhoused until assigned']];
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Reusable EVENT branch</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">EVENT protocol</div>
+        <div class="panel" style="margin-bottom:14px">Use this when an NP faction takes EVENT or when a critical event needs help with placement logic. The goal is not to hardcode every card yet; it is to standardize how event effects pick districts and what gets placed, moved, removed, or rehoused.</div>
+        <div class="small" style="margin-bottom:8px">Event card or short label</div>
+        <input value="${esc(ep.card || '')}" oninput="setEventField('card', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px;font:inherit;margin-bottom:14px">
+        <div class="small" style="margin-bottom:8px">Effect type</div>
+        <div class="grid2" style="margin-bottom:14px">${effectOptions.map(([v,l])=>btn(l, `setEventField('effect','${v}')`, ep.effect===v ? 'primary' : '')).join('')}</div>
+        <div class="small" style="margin-bottom:8px">How are districts chosen?</div>
+        <div class="grid2" style="margin-bottom:14px">${targetingOptions.map(([v,l])=>btn(l, `setEventField('targeting','${v}')`, ep.targeting===v ? 'primary' : '')).join('')}</div>
+        <div class="small" style="margin-bottom:8px">Primary piece change</div>
+        <div class="grid2" style="margin-bottom:14px">${pieceOptions.map(([v,l])=>btn(l, `setEventField('piece','${v}')`, ep.piece===v ? 'primary' : '')).join('')}</div>
+        ${(ep.targeting !== 'global') ? `<div class="small" style="margin-bottom:8px">Affected district(s)</div><div class="grid4" style="margin-bottom:14px">${DISTRICTS.map(d=>`<button class="btn ${(ep.districts||[]).includes(d)?'selected':''}" onclick="toggleEventDistrict('${d}')">${d}</button>`).join('')}</div>` : ''}
+        ${(ep.effect === 'place' || ep.effect === 'move' || ep.effect === 'exhaust') ? `<div class="small" style="margin-bottom:8px">Placement / rehousing follow-up</div><div class="grid2" style="margin-bottom:14px">${housingOptions.map(([v,l])=>btn(l, `setEventField('housing','${v}')`, ep.housing===v ? 'primary' : '')).join('')}</div>` : ''}
+        <textarea oninput="updateEventNotes(this.value)" style="width:100%;min-height:120px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit" placeholder="Card-specific notes, special instructions, or weirdness you want to remember">${esc(ep.notes || '')}</textarea>
+        <div class="grid2" style="margin-top:14px">
+          ${btn('Back to dashboard', "state.screen='dashboard'; render()")}${btn('Prepare EVENT resolution', 'finishEventProtocol()', 'primary')}
         </div>
       </div>`;
     return;
@@ -872,12 +1046,12 @@ render = function(){
   if(state.screen === 'resolver'){
     const c=currentCard(), r=currentRow(), q=currentQuestion(), g=currentGate(), p=currentPriority(), b=currentPriorityBullet();
     const headerClass=state.selectedFaction==='public'?'header-public':state.selectedFaction==='community'?'header-community':'header-private';
-    const prompt=state.stage==='condition'?q.prompt:state.stage==='gate'?g.prompt:state.stage==='priority'?'Does this bullet break the tie?':'Which districts still apply after this bullet?';
-    const sub=state.stage==='condition'?`Card condition: ${r.condition}`:state.stage==='gate'?`Action check: ${r.action}`:state.stage==='priority'?`${p ? p.title : 'No mapped column'} • Bullet ${state.priorityStep+1}${p ? ` of ${p.bullets.length}` : ''}`:b;
+    const prompt=state.stage==='condition'?q.prompt:state.stage==='gate'?g.prompt:state.stage==='priority'?'Which district or districts match this bullet?':'Which districts still apply after this bullet?';
+    const sub=state.stage==='condition'?`Card condition: ${r.condition}`:state.stage==='gate'?`Action check: ${r.action}`:state.stage==='priority'?`${p ? p.title : 'No mapped column'} • Bullet ${state.priorityStep+1}${p ? ` of ${p.bullets.length}` : ''} • Current candidates: ${(state.resolverPool||state.resolverCandidates||[]).map(d => `D${d}`).join(', ')}`:b;
     let actionArea='';
     if(state.stage==='condition') actionArea=`<div class="grid">${btn('Yes',"answerCondition('yes')",'primary')}${btn('No',"answerCondition('no')")}${btn('Not sure',"answerCondition('not_sure')",'secondary')}</div>`;
     else if(state.stage==='gate') actionArea=`<div class="grid">${btn('Yes',"answerGate('yes')",'primary')}${btn('No',"answerGate('no')")}${btn('Not sure',"answerGate('not_sure')",'secondary')}</div>`;
-    else if(state.stage==='priority') actionArea=`<div class="bluebullet" style="border-radius:18px;padding:14px"><div style="font-size:12px;text-transform:uppercase;opacity:.8">Priority bullet</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(b)}</div></div><div class="grid">${btn('Yes',"answerPriority('yes')",'primary')}${btn('No',"answerPriority('no')")}${btn('Not sure',"answerPriority('not_sure')",'secondary')}</div>`;
+    else if(state.stage==='priority') actionArea=`<div class="bluebullet" style="border-radius:18px;padding:14px"><div style="font-size:12px;text-transform:uppercase;opacity:.8">Priority bullet</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(b)}</div><div style="margin-top:8px;font-size:13px;opacity:.9">Select every current candidate district that matches this bullet. One survivor wins. Several survivors stay tied and move to the next bullet.</div></div><div class="grid4">${(state.resolverPool||state.resolverCandidates||[]).map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div><div class="grid2">${btn('Apply this bullet','applyPriorityDistricts()','primary')}${btn('Reset candidates','resetResolverCandidates()')}</div><div class="grid2">${btn('No matches this bullet','state.resolverCandidates=[]; applyPriorityDistricts()')}${btn('Need hint',"answerPriority('not_sure')",'secondary')}</div>`;
     else actionArea=`
       <div class="panel"><div style="font-weight:700;margin-bottom:8px">Mark the surviving districts for this bullet</div><div class="muted">One survivor = winner. Several survivors = stay tied and move to the next bullet. Zero survivors = no district.</div></div>
       <div class="grid4">${DISTRICTS.map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div>
@@ -925,4 +1099,10 @@ window.toggleResolverCandidate = toggleResolverCandidate;
 window.resetResolverCandidates = resetResolverCandidates;
 window.confirmResolverCandidates = confirmResolverCandidates;
 window.prefillLogFromCurrentResult = prefillLogFromCurrentResult;
+window.applyPriorityDistricts = applyPriorityDistricts;
+window.openEventProtocol = openEventProtocol;
+window.setEventField = setEventField;
+window.updateEventNotes = updateEventNotes;
+window.toggleEventDistrict = toggleEventDistrict;
+window.finishEventProtocol = finishEventProtocol;
 render();
