@@ -559,3 +559,370 @@ window.resetCandidateDistricts = resetCandidateDistricts;
 window.chooseHelperDistrict = chooseHelperDistrict;
 
 render();
+
+
+// --- Option 2 integration pass ---
+Object.assign(state, {
+  roundTracker: state.roundTracker || { round: 1, max: 8, critical: null, checked: false, pendingScreen: null },
+  actionLog: state.actionLog || [],
+  logDraft: state.logDraft || {
+    faction: state.playerFaction || 'public',
+    mode: 'act',
+    districts: [],
+    changes: { population: false, vulnerability: false, organization: false, infrastructure: false, markers: false, resources: false },
+    notes: ''
+  },
+  resolverCandidates: state.resolverCandidates || [...DISTRICTS]
+});
+
+const originalStartResolver_v2 = startResolver;
+startResolver = function(f){
+  state.selectedFaction = f;
+  resetResolverState();
+  state.resolverCandidates = [...DISTRICTS];
+  if(state.roundTracker && state.roundTracker.critical === null){
+    state.roundTracker.pendingScreen = 'mode';
+    state.screen = 'round_gate';
+    render();
+    return;
+  }
+  state.screen = 'mode';
+  render();
+};
+
+const originalStartModeResolution_v2 = startModeResolution;
+startModeResolution = function(){
+  if(state.roundTracker && state.roundTracker.critical === null){
+    state.roundTracker.pendingScreen = 'mode';
+    state.screen = 'round_gate';
+    render();
+    return;
+  }
+  originalStartModeResolution_v2();
+};
+
+const originalBack_v2 = back;
+back = function(){
+  if(state.screen === 'round_gate' || state.screen === 'log_action'){
+    state.screen = 'dashboard';
+    render();
+    return;
+  }
+  originalBack_v2();
+};
+
+const originalResetAll_v2 = resetAll;
+resetAll = function(){
+  originalResetAll_v2();
+  Object.assign(state, {
+    roundTracker: { round: 1, max: 8, critical: null, checked: false, pendingScreen: null },
+    actionLog: [],
+    logDraft: {
+      faction: state.playerFaction || 'public',
+      mode: 'act',
+      districts: [],
+      changes: { population: false, vulnerability: false, organization: false, infrastructure: false, markers: false, resources: false },
+      notes: ''
+    },
+    resolverCandidates: [...DISTRICTS]
+  });
+  render();
+};
+
+const originalAnswerPriority_v2 = answerPriority;
+answerPriority = function(answer){
+  if(answer === 'yes'){
+    state.resolverCandidates = [...DISTRICTS];
+  }
+  originalAnswerPriority_v2(answer);
+};
+
+function setRoundCritical(v){
+  state.roundTracker.critical = v;
+  state.roundTracker.checked = true;
+  render();
+}
+function continueRoundGate(){
+  const target = state.roundTracker.pendingScreen || 'dashboard';
+  state.roundTracker.pendingScreen = null;
+  state.screen = target;
+  render();
+}
+function resetLogDraft(){
+  state.logDraft = {
+    faction: state.playerFaction || 'public',
+    mode: 'act',
+    districts: [],
+    changes: { population: false, vulnerability: false, organization: false, infrastructure: false, markers: false, resources: false },
+    notes: ''
+  };
+}
+function openActionLogger(faction=null, mode=null, districts=null){
+  if(state.roundTracker && state.roundTracker.critical === null){
+    state.roundTracker.pendingScreen = 'log_action';
+    state.screen = 'round_gate';
+    render();
+    return;
+  }
+  resetLogDraft();
+  if(faction) state.logDraft.faction = faction;
+  if(mode) state.logDraft.mode = mode;
+  if(Array.isArray(districts)) state.logDraft.districts = [...districts];
+  state.screen = 'log_action';
+  render();
+}
+function toggleLogDistrict(d){
+  const set = new Set(state.logDraft.districts || []);
+  if(set.has(d)) set.delete(d); else set.add(d);
+  state.logDraft.districts = DISTRICTS.filter(x => set.has(x));
+  render();
+}
+function setLogFaction(f){ state.logDraft.faction = f; render(); }
+function setLogMode(m){ state.logDraft.mode = m; render(); }
+function toggleLogChange(key){ state.logDraft.changes[key] = !state.logDraft.changes[key]; render(); }
+function updateLogNotes(v){ state.logDraft.notes = v; }
+function actionLogSummary(entry){
+  const districts = entry.districts && entry.districts.length ? ` • D${entry.districts.join(', D')}` : '';
+  const changes = Object.entries(entry.changes || {}).filter(([,v]) => v).map(([k]) => k).join(', ');
+  return `R${entry.round} • ${factions[entry.faction].label} • ${entry.mode.toUpperCase()}${districts}${changes ? ` • ${changes}` : ''}${entry.notes ? ` • ${entry.notes}` : ''}`;
+}
+function saveLoggedAction(){
+  const entry = {
+    round: state.roundTracker.round,
+    faction: state.logDraft.faction,
+    mode: state.logDraft.mode,
+    districts: [...(state.logDraft.districts || [])],
+    changes: { ...(state.logDraft.changes || {}) },
+    notes: state.logDraft.notes || ''
+  };
+  state.actionLog = [...(state.actionLog || []), entry];
+  state.result = {
+    status: 'resolved',
+    title: 'Action logged',
+    body: `${factions[entry.faction].label} ${entry.mode.toUpperCase()} was recorded for round ${entry.round}.`,
+    trace: [actionLogSummary(entry)]
+  };
+  state.screen = 'result';
+  render();
+}
+function advanceRound(){
+  if(state.roundTracker.round >= state.roundTracker.max){
+    state.screen = 'census_helper';
+    render();
+    return;
+  }
+  state.roundTracker.round += 1;
+  state.roundTracker.critical = null;
+  state.roundTracker.checked = false;
+  state.roundTracker.pendingScreen = null;
+  state.result = {
+    status: 'resolved',
+    title: `Round ${state.roundTracker.round} started`,
+    body: 'New event card, new round. The first question is whether the event is critical.',
+    trace: [`Advanced to round ${state.roundTracker.round}.`, 'Critical-event check reset for the new round.']
+  };
+  state.screen = 'result';
+  render();
+}
+function finishCensusCycle(){
+  state.roundTracker.round = 1;
+  state.roundTracker.critical = null;
+  state.roundTracker.checked = false;
+  state.roundTracker.pendingScreen = null;
+  state.result = {
+    status: 'resolved',
+    title: 'Census complete',
+    body: 'Census helper is complete. Round 1 is ready for the next decade or cycle.',
+    trace: ['Census completed.', 'Round tracker reset to Round 1.', 'Critical-event check reset.']
+  };
+  state.screen = 'result';
+  render();
+}
+function toggleResolverCandidate(d){
+  const set = new Set(state.resolverCandidates || DISTRICTS);
+  if(set.has(d)) set.delete(d); else set.add(d);
+  state.resolverCandidates = DISTRICTS.filter(x => set.has(x));
+  render();
+}
+function resetResolverCandidates(){ state.resolverCandidates = [...DISTRICTS]; render(); }
+function confirmResolverCandidates(){
+  const left = state.resolverCandidates || [];
+  if(left.length === 1){ answerDistrict(left[0]); return; }
+  if(left.length === 0){ answerDistrict('none'); return; }
+  answerDistrict('still_tied');
+}
+function prefillLogFromCurrentResult(){
+  const targets = Array.isArray(state.selectedTargets) && state.selectedTargets.length ? [...state.selectedTargets] : (state.result && state.result.title && /District (\d)/.test(state.result.title) ? [RegExp.$1] : []);
+  openActionLogger(state.selectedFaction, state.mode, targets);
+}
+
+const originalRender_v2 = render;
+render = function(){
+  const app = document.getElementById('app');
+
+  if(state.screen === 'dashboard'){
+    const criticalLabel = state.roundTracker.critical === null ? 'Unchecked' : (state.roundTracker.critical ? 'Critical' : 'Not critical');
+    const recentLog = (state.actionLog || []).slice(-5).reverse();
+    app.innerHTML = `
+      <div class="card">
+        <div class="row" style="margin-bottom:12px;align-items:center">
+          <div>
+            <div class="small">You are playing</div>
+            <div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div>
+          </div>
+          <span class="badge">Round ${state.roundTracker.round} / ${state.roundTracker.max}</span>
+        </div>
+        <div class="panel" style="margin-bottom:14px">
+          <div><b>Current round event:</b> ${esc(criticalLabel)}</div>
+          <div style="margin-top:6px"><b>React lockout:</b> HOUSE / BUILD / DEVELOP are auto-skipped during REACT.</div>
+          <div style="margin-top:6px"><b>Census trigger:</b> after round 8, ending the round opens Census helper automatically.</div>
+        </div>
+        <div class="grid2">
+          ${btn(state.roundTracker.critical === null ? 'Round start: critical event?' : 'Edit round critical check', "state.screen='round_gate'; render()", 'primary')}
+          ${btn('Log completed action', "openActionLogger()")}
+          ${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8 → Census' : `End round ${state.roundTracker.round} → next round`, 'advanceRound()')}
+          ${btn('Save / load state', "state.screen='save_load'; render()")}
+        </div>
+      </div>
+      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Resolve turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:8px">Recent assisted state log</div>
+        ${recentLog.length ? recentLog.map(item=>`<div class="trace" style="margin-top:8px">${esc(actionLogSummary(item))}</div>`).join('') : '<div class="muted">No actions logged yet.</div>'}
+      </div>`;
+    return;
+  }
+
+  if(state.screen === 'round_gate'){
+    const locked = state.roundTracker.critical;
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Round ${state.roundTracker.round} opener</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Is this event critical?</div>
+        <div class="panel" style="margin-bottom:14px">
+          Critical means the event exhausts any Infrastructure, or places or replaces any Organization that is not faction-specific. If not critical, you do not need to answer this again until the next event card.
+        </div>
+        <div class="grid2" style="margin-bottom:14px">
+          ${btn('Critical', 'setRoundCritical(true)', locked === true ? 'primary' : '')}
+          ${btn('Not critical', 'setRoundCritical(false)', locked === false ? 'primary' : '')}
+        </div>
+        <div class="grid2">
+          ${btn('Continue', 'continueRoundGate()', locked !== null ? 'primary' : '')}
+          ${btn('Back to dashboard', "state.screen='dashboard'; render()")}
+        </div>
+      </div>`;
+    return;
+  }
+
+  if(state.screen === 'log_action'){
+    const changes = [['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers / coalitions / loans / grants'],['resources','Resources / debt / tax']];
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Assisted state tracking</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Log completed action</div>
+        <div class="small" style="margin-bottom:8px">Faction</div>
+        <div class="grid2" style="margin-bottom:14px">${Object.keys(factions).map(f=>btn(factions[f].label, `setLogFaction('${f}')`, state.logDraft.faction===f ? 'primary' : '')).join('')}</div>
+        <div class="small" style="margin-bottom:8px">Action type</div>
+        <div class="grid2" style="margin-bottom:14px">${['act','event','react','plan'].map(m=>btn(m.toUpperCase(), `setLogMode('${m}')`, state.logDraft.mode===m ? 'primary' : '')).join('')}</div>
+        <div class="small" style="margin-bottom:8px">Affected districts</div>
+        <div class="grid4" style="margin-bottom:14px">${DISTRICTS.map(d=>`<button class="btn ${(state.logDraft.districts||[]).includes(d)?'selected':''}" onclick="toggleLogDistrict('${d}')">${d}</button>`).join('')}</div>
+        <div class="small" style="margin-bottom:8px">What changed on the board?</div>
+        <div class="grid2" style="margin-bottom:14px">${changes.map(([k,label])=>btn(label, `toggleLogChange('${k}')`, state.logDraft.changes[k] ? 'primary' : '')).join('')}</div>
+        <div class="small" style="margin-bottom:8px">Notes</div>
+        <textarea oninput="updateLogNotes(this.value)" style="width:100%;min-height:120px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit">${esc(state.logDraft.notes || '')}</textarea>
+        <div class="grid2" style="margin-top:14px">
+          ${btn('Save log entry', 'saveLoggedAction()', 'primary')}
+          ${btn('Back to dashboard', "state.screen='dashboard'; render()")}
+        </div>
+      </div>`;
+    return;
+  }
+
+  if(state.screen === 'census_helper'){
+    const steps = [
+      ['quota', 'Quota / Corrections / Petitions'],
+      ['correct', 'Correct / Loans / Bonds'],
+      ['audit', 'Audit / Comptroller'],
+      ['objectives', 'Objectives / Goal stars'],
+      ['reset', 'Reset / Cleanup']
+    ];
+    const current = steps[state.censusHelper.step];
+    const key = current[0];
+    let guidance = '';
+    if(key === 'quota') guidance = `<div>NP Public and NP Community each pay to move one Vulnerability from Corrections, if possible. NP Private never pays for this.</div><div>For Petitions & Blight, use the NP preferences already summarized here in the app.</div>`;
+    else if(key === 'correct') guidance = `<div>NP Public and NP Community always pay to return Loans if possible.</div><div>NP Public repays Bonds if doing so does not put them into debt.</div>`;
+    else if(key === 'audit') guidance = `<div>NP Public offers one Bond to each other faction.</div><div>NP Private always buys if possible. NP Community buys only if it does not already have one. NP Public sets Taxes to 1 if possible.</div>`;
+    else if(key === 'objectives') guidance = `<div>Check the current Position cards for priority objective and goal completion.</div>`;
+    else guidance = `<div>Refresh Organizations, clean up temporary items, and discard / record Position cards as normal.</div>`;
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Triggered automatically after round 8</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Census helper</div>
+        <div class="grid" style="margin-bottom:14px">${steps.map((step, idx)=>btn(step[1], `setCensusStep(${idx})`, state.censusHelper.step===idx ? 'primary' : '')).join('')}</div>
+        <div class="panel" style="margin-bottom:14px">${guidance}</div>
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><input type="checkbox" ${state.censusHelper.checks[key] ? 'checked' : ''} onchange="toggleCensusCheck('${key}')"><span>Mark this step complete</span></label>
+        <textarea oninput="updateCensusNote('${key}', this.value)" style="width:100%;min-height:120px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit">${esc(state.censusHelper.notes[key] || '')}</textarea>
+        <div class="grid2" style="margin-top:14px">
+          ${btn('Previous', `setCensusStep(${Math.max(0, state.censusHelper.step - 1)})`)}
+          ${btn(state.censusHelper.step === steps.length - 1 ? 'Finish Census' : 'Next', state.censusHelper.step === steps.length - 1 ? 'finishCensusCycle()' : `setCensusStep(${Math.min(steps.length - 1, state.censusHelper.step + 1)})`, 'primary')}
+        </div>
+      </div>`;
+    return;
+  }
+
+  if(state.screen === 'resolver'){
+    const c=currentCard(), r=currentRow(), q=currentQuestion(), g=currentGate(), p=currentPriority(), b=currentPriorityBullet();
+    const headerClass=state.selectedFaction==='public'?'header-public':state.selectedFaction==='community'?'header-community':'header-private';
+    const prompt=state.stage==='condition'?q.prompt:state.stage==='gate'?g.prompt:state.stage==='priority'?'Does this bullet break the tie?':'Which districts still apply after this bullet?';
+    const sub=state.stage==='condition'?`Card condition: ${r.condition}`:state.stage==='gate'?`Action check: ${r.action}`:state.stage==='priority'?`${p ? p.title : 'No mapped column'} • Bullet ${state.priorityStep+1}${p ? ` of ${p.bullets.length}` : ''}`:b;
+    let actionArea='';
+    if(state.stage==='condition') actionArea=`<div class="grid">${btn('Yes',"answerCondition('yes')",'primary')}${btn('No',"answerCondition('no')")}${btn('Not sure',"answerCondition('not_sure')",'secondary')}</div>`;
+    else if(state.stage==='gate') actionArea=`<div class="grid">${btn('Yes',"answerGate('yes')",'primary')}${btn('No',"answerGate('no')")}${btn('Not sure',"answerGate('not_sure')",'secondary')}</div>`;
+    else if(state.stage==='priority') actionArea=`<div class="bluebullet" style="border-radius:18px;padding:14px"><div style="font-size:12px;text-transform:uppercase;opacity:.8">Priority bullet</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(b)}</div></div><div class="grid">${btn('Yes',"answerPriority('yes')",'primary')}${btn('No',"answerPriority('no')")}${btn('Not sure',"answerPriority('not_sure')",'secondary')}</div>`;
+    else actionArea=`
+      <div class="panel"><div style="font-weight:700;margin-bottom:8px">Mark the surviving districts for this bullet</div><div class="muted">One survivor = winner. Several survivors = stay tied and move to the next bullet. Zero survivors = no district.</div></div>
+      <div class="grid4">${DISTRICTS.map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div>
+      <div class="grid2">${btn('Apply survivors','confirmResolverCandidates()','primary')}${btn('Reset all','resetResolverCandidates()')}</div>
+      <div class="grid2">${btn('No district',"answerDistrict('none')")}${btn('Not sure',"answerDistrict('not_sure')",'secondary')}</div>`;
+    const targetCard=isMultiTargetMode()?`<div class="targetcard" style="border-radius:18px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;font-weight:700;text-transform:uppercase">◎ Targets for this action</div><div style="display:flex;flex-wrap:wrap;gap:8px">${Array.from({length:currentTargetLimit()}).map((_,idx)=>{ const value=state.selectedTargets[idx]; return `<span class="chip ${value ? 'chip-filled':'chip-empty'}">${value ? `Target ${idx+1}: District ${value}` : `Target ${idx+1}: —`}</span>`; }).join('')}</div><div style="margin-top:8px;font-size:12px">${remainingTargetSlots()>0 ? `${remainingTargetSlots()} target slot${remainingTargetSlots()===1?'':'s'} left.` : 'No target slots left.'}</div></div>`:'';
+    const hint=state.showHint?`<div class="hint">${esc(currentHint())}</div>`:'';
+    const trace=state.showTrace?`<div style="padding:0 20px 20px 20px">${state.history.length ? state.history.map(item=>`<div class="trace" style="margin-top:8px">${esc(item.reason)}</div>`).join('') : `<div class="muted">No steps logged yet.</div>`}</div>`:'';
+    app.innerHTML=`<div class="card"><div class="row"><div><div class="small">Round ${state.roundTracker.round} • ${state.roundTracker.critical ? 'Critical event' : 'Normal event'}</div><div style="font-size:18px;font-weight:700">${factions[state.selectedFaction].label} NP resolver</div></div><span class="badge">${esc(c.name)}</span></div></div><div class="grid4" style="font-size:12px;font-weight:600">${['condition','gate','priority','district'].map((k,i)=>`<div class="${state.stage===k?'stepon':'stepoff'}" style="border-radius:16px;padding:8px 10px;text-align:center">${['Row','Legal','Priority','District'][i]}</div>`).join('')}</div><div class="card" style="padding:0;border:1px solid #e2e8f0;overflow:hidden"><div class="${headerClass}" style="padding:20px"><div class="row"><div><div style="font-size:12px;text-transform:uppercase;opacity:.8">Current row</div><div style="margin-top:4px;font-size:18px;font-weight:700">Row ${r.index} • ${r.action}</div><div style="font-size:14px;opacity:.9">${esc(r.instruction)}</div></div><span class="badge">${state.mode.toUpperCase()}</span></div><div style="margin-top:12px" class="progress"><div class="bar" style="width:${progress()}%"></div></div></div><div style="padding:20px;display:grid;gap:16px"><div class="checkcard" style="border-radius:18px;padding:14px"><div style="font-size:12px;text-transform:uppercase;color:#000">Check</div><div style="margin-top:4px;font-size:18px;font-weight:700;color:#000">${esc(prompt)}</div><div style="margin-top:8px;font-size:14px;color:#000">${esc(sub)}</div></div>${targetCard}${actionArea}<div class="grid2">${btn('‹ Back one step','stepBackResolver()')}${btn(state.showHint ? 'Hide hint':'Need help?','state.showHint=!state.showHint; render()','ghost')}</div>${hint}</div></div><div class="card" style="padding:0;border:1px solid #bae6fd;overflow:hidden"><button style="display:flex;width:100%;justify-content:space-between;align-items:center;padding:16px 20px;background:transparent;border:0" onclick="state.showTrace=!state.showTrace; render()"><div><div style="font-weight:700">Why it did that</div><div class="muted">Rules trace</div></div><span class="badge">${state.showTrace ? 'Hide':'Show'}</span></button>${trace}</div>`;
+    return;
+  }
+
+  if(state.screen === 'result' && state.result){
+    const r=state.result;
+    const resultClass=r.status==='resolved'?'result-resolved':r.status==='continue'?'result-continue':'result-discard';
+    const iconClass=r.status==='resolved'?'iconbox ok':r.status==='continue'?'iconbox cont':'iconbox warn';
+    let extra='';
+    if(r.status==='discard') extra = btn('Draw replacement card','handleDiscardReplacement()');
+    else if(r.status==='continue') extra = btn('Resolve another district','continueSameAction()') + btn('Finish this action','finishThisAction()') + btn('Log this NP action','prefillLogFromCurrentResult()');
+    else extra = btn('Resolve this NP again',`startResolver('${state.selectedFaction}')`) + btn('Log this action','prefillLogFromCurrentResult()');
+    app.innerHTML=`<div class="card ${resultClass}"><div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px"><div class="${iconClass}">${r.status==='discard'?'!':'✓'}</div><div><div style="font-size:22px;font-weight:700">${esc(r.title)}</div><div class="muted" style="margin-top:4px">${esc(r.body)}</div></div></div><div class="grid">${btn('Return to dashboard',"state.screen='dashboard'; render()",'primary')}${extra}</div></div><div class="card"><div style="font-weight:700;margin-bottom:8px">Why it did that</div>${(r.trace && r.trace.length?r.trace:['No rules trace was captured for this result.']).map(line=>`<div class="trace" style="margin-top:8px">${esc(line)}</div>`).join('')}</div>`;
+    return;
+  }
+
+  originalRender_v2();
+};
+
+window.startResolver = startResolver;
+window.startModeResolution = startModeResolution;
+window.back = back;
+window.resetAll = resetAll;
+window.answerPriority = answerPriority;
+window.setRoundCritical = setRoundCritical;
+window.continueRoundGate = continueRoundGate;
+window.openActionLogger = openActionLogger;
+window.toggleLogDistrict = toggleLogDistrict;
+window.setLogFaction = setLogFaction;
+window.setLogMode = setLogMode;
+window.toggleLogChange = toggleLogChange;
+window.updateLogNotes = updateLogNotes;
+window.saveLoggedAction = saveLoggedAction;
+window.advanceRound = advanceRound;
+window.finishCensusCycle = finishCensusCycle;
+window.toggleResolverCandidate = toggleResolverCandidate;
+window.resetResolverCandidates = resetResolverCandidates;
+window.confirmResolverCandidates = confirmResolverCandidates;
+window.prefillLogFromCurrentResult = prefillLogFromCurrentResult;
+render();
