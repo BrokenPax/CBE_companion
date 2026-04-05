@@ -1206,7 +1206,72 @@ const EVENT_PRESETS_40S = {
     {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
   ]}
 };
-const EVENT_DECKS = {'1940s': EVENT_PRESETS_40S};
+const EVENT_PRESETS_50S = {
+  '016': { year: 1950, title: 'New Public Housing in the Bronx', order:['public','community','private'], steps:[
+    {kind:'infrastructure', action:'place_public', amount:1, target:'one_district', text:'Place 1 Public Infrastructure.'},
+    {kind:'population', action:'move_up_to', amount:3, target:'any_districts', text:'Move up to 3 Population to any District(s).'},
+    {kind:'organization', action:'remove', amount:1, target:'one_district', text:'Remove 1 Organization.'}
+  ]},
+  '017': { year: 1950, title: 'Economy Pushes Domestic Work Under the Table', order:['community','private','public'], steps:[
+    {kind:'resources', action:'increase', amount:1, target:'faction', text:'Increase Resources by 1.'},
+    {kind:'vulnerability', action:'add_each', amount:1, repeat:2, target:'two_districts', text:'Add 1 Vulnerability each to two Districts.'}
+  ]},
+  '018': { year: 1951, title: 'Integration Arrives to Fight in Korea', order:['public','private','community'], steps:[
+    {kind:'population', action:'remove_each', amount:1, repeat:2, target:'two_districts', text:'Remove 1 Population from two Districts.'},
+    {kind:'vulnerability', action:'remove_from_corrections', amount:1, target:'corrections', text:'Remove 1 Vulnerability from Corrections.'}
+  ]},
+  '019': { year: 1952, title: 'Property Values Decrease as Lenders Stop Lending', order:['private','public','community'], steps:[
+    {kind:'organization', action:'remove', amount:1, target:'one_district', text:'Remove 1 Organization.'},
+    {kind:'markers', action:'loans_to_1980', amount:null, target:'none', text:'Place any available Loan markers on the 1980 space.'}
+  ]},
+  '020': { year: 1952, title: 'Extension Connects Westchester to the City', order:['private','public','community'], steps:[
+    {kind:'infrastructure', action:'exhaust', amount:1, target:'one_district', text:'Exhaust 1 Infrastructure.'},
+    {kind:'population', action:'move', amount:2, target:'adjacent', text:'Move 2 Population from one District to one adjacent District.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '021': { year: 1953, title: 'Big “Boss” Buckley Back in the Bronx', order:['community','private','public'], steps:[
+    {kind:'organization', action:'replace_with_any', amount:1, target:'one_district', text:'Replace 1 Organization with any other Organization.'},
+    {kind:'organization', action:'grant_existing', amount:1, target:'one_district', text:'Give 1 Organization a Grant.'}
+  ]},
+  '022': { year: 1953, title: 'Bronx Attorney Elected to State Assembly', order:['community','public','private'], steps:[
+    {kind:'organization', action:'place_with_grant', amount:1, target:'one_district', text:'Place 1 Organization with a Grant.'},
+    {kind:'vulnerability', action:'move', amount:2, target:'adjacent', text:'Move 2 Vulnerabilities from one District to one adjacent District.'}
+  ]},
+  '023': { year: 1954, title: 'Migrants from Puerto Rico Love the Bronx', order:['community','public','private'], steps:[
+    {kind:'population', action:'add', amount:3, target:'one_district', text:'Add 3 Population to one District.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '024': { year: 1954, title: 'Little Wagner Takes Mayoral Seat', order:['public','community','private'], steps:[
+    {kind:'organization', action:'place_public_with_grant', amount:1, target:'one_district', text:'Place 1 Public Organization with a Grant.'}
+  ]},
+  '025': { year: 1955, title: 'Major Deegan Honored in Expressway Opening', order:['private','community','public'], steps:[
+    {kind:'infrastructure', action:'exhaust', amount:2, target:'one_district', text:'Exhaust 2 Infrastructure.'},
+    {kind:'population', action:'move', amount:2, target:'adjacent', text:'Move 2 Population from one District to one adjacent District.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '026': { year: 1956, title: 'Gangs of the Bronx', order:['community','private','public'], steps:[
+    {kind:'resources', action:'increase', amount:1, target:'faction', text:'Increase Resources by 1.'},
+    {kind:'vulnerability', action:'add', amount:1, target:'one_district', text:'Add 1 Vulnerability to one District.'}
+  ]},
+  '027': { year: 1957, title: 'Bronx Line Connects With Rest of Subway', order:['private','public','community'], steps:[
+    {kind:'population', action:'move', amount:2, target:'adjacent', text:'Move 2 Population from one District to one adjacent District.'},
+    {kind:'vulnerability', action:'remove', amount:1, target:'one_district', text:'Remove 1 Vulnerability from one District.'}
+  ]},
+  '028': { year: 1957, title: 'Community College Comes to the Bronx', order:['public','community','private'], steps:[
+    {kind:'organization', action:'place_public_with_grant', amount:1, target:'one_district', text:'Place 1 Public Organization with a Grant.'},
+    {kind:'vulnerability', action:'move', amount:2, target:'adjacent', text:'Move 2 Vulnerabilities from one District to one adjacent District.'}
+  ]},
+  '029': { year: 1958, title: 'Like Father Like Son: Wagner Fights for Working Class New Yorkers', order:['community','public','private'], steps:[
+    {kind:'organization', action:'replace_with_any', amount:1, target:'one_district', text:'Replace 1 Organization with any other Organization.'},
+    {kind:'vulnerability', action:'move', amount:2, target:'adjacent', text:'Move 2 Vulnerabilities from one District to one adjacent District.'}
+  ]},
+  '030': { year: 1958, title: 'As the City Grows Some New Yorkers Leave', order:['private','public','community'], steps:[
+    {kind:'population', action:'remove_total', amount:4, target:'three_districts', text:'Remove 4 Population total from three Districts.'},
+    {kind:'organization', action:'activate_private', amount:1, target:'one_district', text:'Activate 1 Private Organization.'},
+    {kind:'resources', action:'increase', amount:2, target:'faction', text:'Increase Resources by 2.'}
+  ]}
+};
+const EVENT_DECKS = {'1940s': EVENT_PRESETS_40S, '1950s': EVENT_PRESETS_50S};
 
 function getEventPreset(){
   const decade = (state.eventProtocol && state.eventProtocol.decade) || '1940s';
@@ -1249,9 +1314,10 @@ function eventTargetHelp(step){
   const labels = {
     one_district:'Pick the single District affected.',
     any_districts:'Pick the District or Districts affected.',
-    adjacent:'Pick the destination District or Districts. Note adjacency in the step note if needed.',
+    adjacent:'Pick the destination District or Districts. Note adjacency, source district, or split in the step note if needed.',
     four_districts:'Pick four Districts if known.',
     three_districts:'Pick three Districts if known.',
+    two_districts:'Pick two Districts if known.',
     corrections:'No District selection needed; this step hits Corrections.',
     faction:'No District selection needed; this step hits faction resources.',
     none:'No District selection needed.'
@@ -1317,11 +1383,12 @@ render = function(){
           <div style="font-weight:700;margin-bottom:8px">Deck preset</div>
           <div class="grid2" style="margin-bottom:10px">
             ${btn('1940s deck', "setEventDecade('1940s')", ep.decade==='1940s' ? 'primary' : '')}
+            ${btn('1950s deck', "setEventDecade('1950s')", ep.decade==='1950s' ? 'primary' : '')}
             ${btn('Generic manual', "setEventDecade('generic')", ep.decade==='generic' ? 'primary' : '')}
           </div>
-          <div class="small">The 1940s scans are wired as presets. Generic manual mode is still available for uncoded cards.</div>
+          <div class="small">The 1940s and 1950s scans are wired as presets. Generic manual mode is still available for uncoded cards.</div>
         </div>
-        ${ep.decade==='1940s' ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Choose 1940s event card</div><div class="grid2">${cardButtons}</div></div>` : ''}
+        ${['1940s','1950s'].includes(ep.decade) ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Choose ${esc(ep.decade)} event card</div><div class="grid2">${cardButtons}</div></div>` : ''}
         ${preset ? `<div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div><div style="font-size:18px;font-weight:700">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small">${preset.year} • Order: ${preset.order.map(f=>factions[f].short).join(' → ')}</div></div><span class="badge">${preset.steps.length} step${preset.steps.length===1?'':'s'}</span></div>${preset.steps.map((step, idx)=>`<div class="panel" style="margin-top:12px"><div style="font-size:12px;text-transform:uppercase;opacity:.75">Step ${idx+1}</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(step.text)}</div><div class="small" style="margin-top:6px">${esc(eventTargetHelp(step))}</div>${shouldShowStepDistricts(step) ? `<div class="grid4" style="margin-top:10px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[String(idx)]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : ''}<textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:72px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="Optional note: adjacency, source district, which org, loan/grant details, etc.">${esc(((ep.stepNotes||{})[String(idx)] || ''))}</textarea></div>`).join('')}</div>` : ''}
         ${ep.decade==='generic' ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Generic manual mode</div><div class="small" style="margin-bottom:8px">Use this for uncoded decks. The older generic EVENT fields still work here.</div><input value="${esc(ep.card || '')}" oninput="setEventField('card', this.value)" placeholder="Card number / title" style="width:100%;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit"></div>` : ''}
         <textarea oninput="updateEventNotes(this.value)" style="width:100%;min-height:96px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit" placeholder="Overall event notes">${esc(ep.notes || '')}</textarea>
@@ -1338,5 +1405,404 @@ window.setEventDecade = setEventDecade;
 window.chooseEventCardPreset = chooseEventCardPreset;
 window.toggleEventStepDistrict = toggleEventStepDistrict;
 window.updateEventStepNote = updateEventStepNote;
+window.finishEventProtocol = finishEventProtocol;
+window.render = render;
+
+/* --- Modular core effect resolver library (option 2 event upgrade) --- */
+const EVENT_EFFECT_RESOLVERS = {
+  infrastructure_exhaust: {
+    id: 'infrastructure_exhaust',
+    label: 'Exhaust infrastructure',
+    targetStrategy: 'district_then_tile',
+    prompts: [
+      'Choose the district containing the infrastructure tile being exhausted.',
+      'Use the note field to identify the tile or current owner if that matters.',
+      'Then record any rehousing and anything that becomes unhoused.'
+    ],
+    defaultChanges: ['infrastructure', 'population', 'vulnerability', 'organization'],
+    noteHint: 'Tile identity, rehousing result, pieces left unhoused'
+  },
+  infrastructure_place_public: {
+    id: 'infrastructure_place_public',
+    label: 'Place Public infrastructure',
+    targetStrategy: 'district_then_house',
+    prompts: [
+      'Choose the district receiving the new Public infrastructure.',
+      'After placement, house as many eligible unhoused pieces as possible.',
+      'Use the note field for any important housing choice.'
+    ],
+    defaultChanges: ['infrastructure', 'population', 'vulnerability', 'organization'],
+    noteHint: 'Housing choice, coalition created, pieces still unhoused'
+  },
+  infrastructure_replace: {
+    id: 'infrastructure_replace',
+    label: 'Replace infrastructure',
+    targetStrategy: 'district_then_tile',
+    prompts: [
+      'Choose the district containing the infrastructure being replaced.',
+      'Use the note field to show what was replaced and what entered.',
+      'Record any housing consequences if the swap changed who can be housed.'
+    ],
+    defaultChanges: ['infrastructure', 'population', 'vulnerability', 'organization'],
+    noteHint: 'From/to infrastructure, owner, housing consequences'
+  },
+  population_add: {
+    id: 'population_add',
+    label: 'Add population',
+    targetStrategy: 'district_pool',
+    prompts: [
+      'Choose the affected district or districts.',
+      'Use the note field if the cubes are split unevenly or housing matters.',
+      'If housing is relevant, note whether the new population was housed or left unhoused.'
+    ],
+    defaultChanges: ['population'],
+    noteHint: 'Counts by district, housed vs unhoused'
+  },
+  population_move: {
+    id: 'population_move',
+    label: 'Move population',
+    targetStrategy: 'source_destination',
+    prompts: [
+      'Select the destination district(s) here.',
+      'Use the note field to record the source district and any adjacency requirement.',
+      'Also note whether the moved population ended housed or unhoused.'
+    ],
+    defaultChanges: ['population'],
+    noteHint: 'Source district, adjacency, housed/unhoused result'
+  },
+  population_remove: {
+    id: 'population_remove',
+    label: 'Remove population',
+    targetStrategy: 'district_pool',
+    prompts: [
+      'Choose the district or districts population is removed from.',
+      'If the card removes one each from multiple districts, use the exact districts.',
+      'Use the note field if the total is split in a special way.'
+    ],
+    defaultChanges: ['population'],
+    noteHint: 'Counts removed by district, total split'
+  },
+  vulnerability_add: {
+    id: 'vulnerability_add',
+    label: 'Add vulnerability',
+    targetStrategy: 'district_pool',
+    prompts: [
+      'Choose the district or districts receiving vulnerability.',
+      'Use the note field if any vulnerability was housed on infrastructure.',
+      'If only one district applies, selecting that district completes the targeting.'
+    ],
+    defaultChanges: ['vulnerability'],
+    noteHint: 'Counts by district, housed vs unhoused'
+  },
+  vulnerability_move: {
+    id: 'vulnerability_move',
+    label: 'Move vulnerability',
+    targetStrategy: 'source_destination',
+    prompts: [
+      'Select the destination district(s) here.',
+      'Use the note field to record source district and any adjacency restriction.',
+      'If multiple vulnerability cubes split across destinations, record that split in the note.'
+    ],
+    defaultChanges: ['vulnerability'],
+    noteHint: 'Source district, adjacency, split among destinations'
+  },
+  vulnerability_remove: {
+    id: 'vulnerability_remove',
+    label: 'Remove vulnerability',
+    targetStrategy: 'district_pool',
+    prompts: [
+      'Choose the district vulnerability is removed from, unless the step hits Corrections.',
+      'Use the note field if the removal came from Corrections or Overflow instead.',
+      'Record any special follow-up if the removal opens housing or changes petitions.'
+    ],
+    defaultChanges: ['vulnerability'],
+    noteHint: 'Source district or Corrections, follow-up consequences'
+  },
+  organization_place: {
+    id: 'organization_place',
+    label: 'Place organization',
+    targetStrategy: 'district_then_house',
+    prompts: [
+      'Choose the district receiving the organization.',
+      'If a grant or loan is waiting, note whether it attached to the new organization.',
+      'Use the note field for tile placement and any coalition created.'
+    ],
+    defaultChanges: ['organization', 'markers'],
+    noteHint: 'Faction org, grant/loan, tile placement, coalition'
+  },
+  organization_remove: {
+    id: 'organization_remove',
+    label: 'Remove organization',
+    targetStrategy: 'district_then_specific',
+    prompts: [
+      'Choose the district losing the organization.',
+      'Use the note field to identify which organization was removed.',
+      'If the removed organization defaulted a loan or grant, record that too.'
+    ],
+    defaultChanges: ['organization', 'markers'],
+    noteHint: 'Which org removed, defaulted grant/loan, coalition broken'
+  },
+  organization_replace: {
+    id: 'organization_replace',
+    label: 'Replace organization',
+    targetStrategy: 'district_then_specific',
+    prompts: [
+      'Choose the district where the replacement happens.',
+      'Use the note field to identify the outgoing organization and the incoming one.',
+      'Record any grant, loan, or coalition consequences.'
+    ],
+    defaultChanges: ['organization', 'markers'],
+    noteHint: 'Outgoing org, incoming org, grant/loan, coalition'
+  },
+  organization_activate: {
+    id: 'organization_activate',
+    label: 'Activate organization',
+    targetStrategy: 'district_then_specific',
+    prompts: [
+      'Choose the district containing the organization being activated.',
+      'Use the note field to identify which organization activated.',
+      'Record any immediate effect if the card ties activation to a removal or resource gain.'
+    ],
+    defaultChanges: ['organization'],
+    noteHint: 'Which org activated, linked effect if any'
+  },
+  markers_shift: {
+    id: 'markers_shift',
+    label: 'Marker / grant / loan shift',
+    targetStrategy: 'special',
+    prompts: [
+      'This step usually does not target a normal district selection.',
+      'Use the note field to record the exact grant, loan, petition, blight, or calendar effect.',
+      'If a district is involved anyway, you can still select it manually.'
+    ],
+    defaultChanges: ['markers'],
+    noteHint: 'Grant/loan/petition/blight/calendar detail'
+  },
+  phase_quota: {
+    id: 'phase_quota',
+    label: 'Quota / special phase',
+    targetStrategy: 'special',
+    prompts: [
+      'This step triggers a phase instead of moving a normal piece.',
+      'Use the note field to record how that phase was resolved.',
+      'If the phase changed districts or pieces, summarize the result in the note.'
+    ],
+    defaultChanges: ['markers'],
+    noteHint: 'Phase resolution summary'
+  },
+  resources_delta: {
+    id: 'resources_delta',
+    label: 'Resource change',
+    targetStrategy: 'special',
+    prompts: [
+      'This step changes faction resources rather than a district directly.',
+      'Use the note field to record the resource delta and any linked condition.',
+      'If a district was involved indirectly, you may still select it.'
+    ],
+    defaultChanges: ['resources'],
+    noteHint: 'Resource delta, debt/tax note if relevant'
+  },
+  generic_manual: {
+    id: 'generic_manual',
+    label: 'Manual override',
+    targetStrategy: 'manual',
+    prompts: [
+      'Use this when the standard resolver is not a good fit.',
+      'Select any districts that matter and explain the full result in the note.',
+      'This preserves flexibility without forcing a bad template.'
+    ],
+    defaultChanges: [],
+    noteHint: 'Describe the step in plain English'
+  }
+};
+
+function inferResolverId(step){
+  if(!step) return 'generic_manual';
+  const key = `${step.kind||''}:${step.action||''}`;
+  const map = {
+    'infrastructure:exhaust': 'infrastructure_exhaust',
+    'infrastructure:place_public': 'infrastructure_place_public',
+    'infrastructure:replace_private_with_community': 'infrastructure_replace',
+    'population:add': 'population_add',
+    'population:add_each': 'population_add',
+    'population:move': 'population_move',
+    'population:move_up_to': 'population_move',
+    'population:remove': 'population_remove',
+    'population:remove_each': 'population_remove',
+    'population:remove_total': 'population_remove',
+    'vulnerability:add': 'vulnerability_add',
+    'vulnerability:add_each': 'vulnerability_add',
+    'vulnerability:move': 'vulnerability_move',
+    'vulnerability:remove': 'vulnerability_remove',
+    'vulnerability:remove_from_corrections': 'vulnerability_remove',
+    'organization:place_with_grant_or_loan': 'organization_place',
+    'organization:place_with_grant': 'organization_place',
+    'organization:place_public_with_grant': 'organization_place',
+    'organization:grant_existing': 'markers_shift',
+    'organization:remove': 'organization_remove',
+    'organization:replace_public_with_private': 'organization_replace',
+    'organization:replace_with_any': 'organization_replace',
+    'organization:move': 'organization_place',
+    'organization:activate_private': 'organization_activate',
+    'markers:loans_to_1980': 'markers_shift',
+    'phase:quota': 'phase_quota',
+    'resources:increase': 'resources_delta'
+  };
+  return map[key] || 'generic_manual';
+}
+
+function ensureEventProtocolV3(){
+  ensureEventProtocolShape();
+  state.eventProtocol.stepResolver = state.eventProtocol.stepResolver || {};
+  state.eventProtocol.stepManual = state.eventProtocol.stepManual || {};
+  state.eventProtocol.stepChanges = state.eventProtocol.stepChanges || {};
+  const preset = getEventPreset();
+  if(preset){
+    preset.steps.forEach((step, idx) => {
+      const key = String(idx);
+      if(!state.eventProtocol.stepResolver[key]) state.eventProtocol.stepResolver[key] = inferResolverId(step);
+      if(typeof state.eventProtocol.stepManual[key] !== 'boolean') state.eventProtocol.stepManual[key] = false;
+      if(!state.eventProtocol.stepChanges[key]) {
+        const resolver = EVENT_EFFECT_RESOLVERS[state.eventProtocol.stepResolver[key]] || EVENT_EFFECT_RESOLVERS.generic_manual;
+        state.eventProtocol.stepChanges[key] = {
+          population: resolver.defaultChanges.includes('population'),
+          vulnerability: resolver.defaultChanges.includes('vulnerability'),
+          organization: resolver.defaultChanges.includes('organization'),
+          infrastructure: resolver.defaultChanges.includes('infrastructure'),
+          markers: resolver.defaultChanges.includes('markers'),
+          resources: resolver.defaultChanges.includes('resources')
+        };
+      }
+    });
+  }
+}
+
+function setEventStepResolver(idx, resolverId){
+  ensureEventProtocolV3();
+  const key = String(idx);
+  state.eventProtocol.stepResolver[key] = resolverId;
+  const resolver = EVENT_EFFECT_RESOLVERS[resolverId] || EVENT_EFFECT_RESOLVERS.generic_manual;
+  state.eventProtocol.stepChanges[key] = {
+    population: resolver.defaultChanges.includes('population'),
+    vulnerability: resolver.defaultChanges.includes('vulnerability'),
+    organization: resolver.defaultChanges.includes('organization'),
+    infrastructure: resolver.defaultChanges.includes('infrastructure'),
+    markers: resolver.defaultChanges.includes('markers'),
+    resources: resolver.defaultChanges.includes('resources')
+  };
+  render();
+}
+function toggleEventStepManual(idx){ ensureEventProtocolV3(); const k=String(idx); state.eventProtocol.stepManual[k] = !state.eventProtocol.stepManual[k]; render(); }
+function toggleEventStepChange(idx, changeKey){ ensureEventProtocolV3(); const k=String(idx); state.eventProtocol.stepChanges[k][changeKey] = !state.eventProtocol.stepChanges[k][changeKey]; render(); }
+function getResolverForStep(idx, step){ ensureEventProtocolV3(); return EVENT_EFFECT_RESOLVERS[state.eventProtocol.stepResolver[String(idx)]] || EVENT_EFFECT_RESOLVERS.generic_manual; }
+
+function eventStepSummaryDetailed(step, idx){
+  const key = String(idx);
+  const ds = ((state.eventProtocol.stepDistricts||{})[key] || []);
+  const note = ((state.eventProtocol.stepNotes||{})[key] || '').trim();
+  const resolver = getResolverForStep(idx, step);
+  const changes = Object.entries((state.eventProtocol.stepChanges||{})[key] || {}).filter(([,v])=>v).map(([k])=>k).join(', ');
+  const districtText = ds.length ? `Districts: ${ds.map(d=>`D${d}`).join(', ')}.` : (resolver.targetStrategy === 'special' ? 'No normal district selection.' : 'Districts unresolved.');
+  const manualText = state.eventProtocol.stepManual[key] ? 'Manual override used.' : '';
+  return `${idx+1}. ${step.text} Resolver: ${resolver.label}. ${districtText}${changes ? ` Changes: ${changes}.` : ''}${manualText ? ` ${manualText}` : ''}${note ? ` Note: ${note}` : ''}`;
+}
+
+const __oldChooseEventCardPreset_v3 = chooseEventCardPreset;
+chooseEventCardPreset = function(key){
+  __oldChooseEventCardPreset_v3(key);
+  ensureEventProtocolV3();
+};
+const __oldSetEventDecade_v3 = setEventDecade;
+setEventDecade = function(v){ __oldSetEventDecade_v3(v); ensureEventProtocolV3(); };
+const __oldOpenEventProtocol_v3 = openEventProtocol;
+openEventProtocol = function(fromResolver=false){ __oldOpenEventProtocol_v3(fromResolver); ensureEventProtocolV3(); };
+
+finishEventProtocol = function(){
+  ensureEventProtocolV3();
+  const preset = getEventPreset();
+  if(!preset) return _oldFinishEventProtocol();
+  resetLogDraft();
+  const ep = state.eventProtocol;
+  state.logDraft.faction = ep.faction || state.selectedFaction || state.playerFaction || 'public';
+  state.logDraft.mode = 'event';
+  const allDistricts = [];
+  const mergedChanges = { population:false, vulnerability:false, organization:false, infrastructure:false, markers:false, resources:false };
+  preset.steps.forEach((step, idx) => {
+    const key = String(idx);
+    (((ep.stepDistricts||{})[key] || [])).forEach(d => { if(!allDistricts.includes(d)) allDistricts.push(d); });
+    const stepChanges = (ep.stepChanges||{})[key] || {};
+    Object.keys(mergedChanges).forEach(k => { if(stepChanges[k]) mergedChanges[k] = true; });
+  });
+  state.logDraft.districts = allDistricts;
+  state.logDraft.changes = mergedChanges;
+  const orderText = preset.order.map(f=>factions[f].short).join(' → ');
+  state.logDraft.notes = [
+    ep.card || `${ep.cardKey} • ${preset.title}`,
+    `Year: ${preset.year}`,
+    `Order: ${orderText}`,
+    ...preset.steps.map((step, idx)=>eventStepSummaryDetailed(step, idx)),
+    ep.notes || ''
+  ].filter(Boolean).join(' | ');
+  state.screen = 'log_action';
+  render();
+};
+
+const __renderBeforeModularResolver = render;
+render = function(){
+  const app = document.getElementById('app');
+  if(state.screen === 'event_protocol'){
+    ensureEventProtocolV3();
+    const ep = state.eventProtocol;
+    const preset = getEventPreset();
+    const cardButtons = ['1940s','1950s'].includes(ep.decade)
+      ? Object.entries(EVENT_DECKS[ep.decade] || {}).map(([key, card])=>`<button class="btn ${ep.cardKey===key?'selected':''}" onclick="chooseEventCardPreset('${key}')"><div style="font-weight:700">${key} • ${esc(card.title)}</div><div class="small">${card.year}</div></button>`).join('')
+      : '';
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">EVENT branch for ${factions[ep.faction || state.selectedFaction || state.playerFaction].label}</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Advanced EVENT protocol • modular resolvers</div>
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:8px">Deck preset</div>
+          <div class="grid2" style="margin-bottom:10px">
+            ${btn('1940s deck', "setEventDecade('1940s')", ep.decade==='1940s' ? 'primary' : '')}
+            ${btn('1950s deck', "setEventDecade('1950s')", ep.decade==='1950s' ? 'primary' : '')}
+            ${btn('Generic manual', "setEventDecade('generic')", ep.decade==='generic' ? 'primary' : '')}
+          </div>
+          <div class="small">Each preset step now calls a reusable resolver. You can override any step manually when the card gets weird.</div>
+        </div>
+        ${['1940s','1950s'].includes(ep.decade) ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Choose ${esc(ep.decade)} event card</div><div class="grid2">${cardButtons}</div></div>` : ''}
+        ${preset ? `<div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div><div style="font-size:18px;font-weight:700">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small">${preset.year} • Order: ${preset.order.map(f=>factions[f].short).join(' → ')}</div></div><span class="badge">${preset.steps.length} step${preset.steps.length===1?'':'s'}</span></div>${preset.steps.map((step, idx)=>{
+            const key = String(idx);
+            const resolver = getResolverForStep(idx, step);
+            const stepChanges = (ep.stepChanges||{})[key] || {population:false,vulnerability:false,organization:false,infrastructure:false,markers:false,resources:false};
+            return `<div class="panel" style="margin-top:12px">
+              <div class="row" style="align-items:flex-start;gap:10px"><div><div style="font-size:12px;text-transform:uppercase;opacity:.75">Step ${idx+1}</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(step.text)}</div></div><span class="badge">${esc(resolver.label)}</span></div>
+              <div class="small" style="margin-top:8px">Resolver</div>
+              <div class="grid2" style="margin-top:8px">${Object.values(EVENT_EFFECT_RESOLVERS).map(r=>btn(r.label, `setEventStepResolver(${idx}, '${r.id}')`, resolver.id===r.id ? 'primary' : '')).join('')}</div>
+              <div class="panel" style="margin-top:10px;background:#f8fafc">${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div>
+              ${resolver.targetStrategy !== 'special' ? `<div class="small" style="margin-top:10px">Affected district(s)</div><div class="grid4" style="margin-top:8px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[key]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : ''}
+              <div class="small" style="margin-top:10px">Board changes for this step</div>
+              <div class="grid2" style="margin-top:8px">${[['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers'],['resources','Resources']].map(([ck,cl])=>btn(cl, `toggleEventStepChange(${idx}, '${ck}')`, stepChanges[ck] ? 'primary' : '')).join('')}</div>
+              <div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}</div>
+              <textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:72px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea>
+            </div>`;
+          }).join('')}</div>` : ''}
+        ${ep.decade==='generic' ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Generic manual mode</div><div class="small" style="margin-bottom:8px">Use this for uncoded decks or truly weird cards.</div><input value="${esc(ep.card || '')}" oninput="setEventField('card', this.value)" placeholder="Card number / title" style="width:100%;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit"></div>` : ''}
+        <textarea oninput="updateEventNotes(this.value)" style="width:100%;min-height:96px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit" placeholder="Overall event notes">${esc(ep.notes || '')}</textarea>
+        <div class="grid2" style="margin-top:14px">
+          ${btn(state.eventProtocol.fromResolver ? 'Back to mode selection' : 'Back to dashboard', state.eventProtocol.fromResolver ? "state.screen='mode'; render()" : "state.screen='dashboard'; render()")}
+          ${btn(preset ? 'Prefill EVENT log from resolved steps' : 'Prefill EVENT log', 'finishEventProtocol()', 'primary')}
+        </div>
+      </div>`;
+    return;
+  }
+  __renderBeforeModularResolver();
+};
+window.chooseEventCardPreset = chooseEventCardPreset;
+window.setEventDecade = setEventDecade;
+window.openEventProtocol = openEventProtocol;
+window.setEventStepResolver = setEventStepResolver;
+window.toggleEventStepManual = toggleEventStepManual;
+window.toggleEventStepChange = toggleEventStepChange;
 window.finishEventProtocol = finishEventProtocol;
 window.render = render;
