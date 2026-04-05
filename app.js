@@ -75,7 +75,7 @@ function render(){
   if(state.screen==="dashboard"){ app.innerHTML=`<div class="card"><div class="small">You are playing</div><div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div></div>` + npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ""}` : "No Position card selected"}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn("Resolve turn",`startResolver('${f}')`, card ? "primary":"")}${btn("Change card",`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join(""); return; }
   if(state.screen==="plan_helper"){ const c=currentCard(); const bullet=currentPlanBullet(); const hint=state.showHint ? `<div class="hint">Use the <b>Place / Replace / Refresh Organization</b> priority column: test the current bullet against the tied candidate districts, then move to the next bullet only if it does not produce one district.</div>` : ""; let refreshArea=""; if(state.planStep==="intro"){ refreshArea=`<div class="panel" style="margin-bottom:14px"><div style="font-weight:700">PLAN checklist</div><div style="margin-top:8px">1. Do <b>not</b> call an Audit for an NP PLAN.</div><div>2. Refresh an Organization if possible, using the <b>Place / Replace / Refresh Organization</b> priorities.</div><div>3. Record the next main action for this NP faction.</div></div><div class="grid"><button class="btn primary" onclick="state.planStep='priority'; state.showHint=false; render()">Run refresh protocol</button></div>`; } else if(state.planStep==="priority"){ refreshArea=`<div class="panel" style="margin-bottom:14px"><div style="font-weight:700">Refresh protocol</div><div style="margin-top:8px;font-size:12px;text-transform:uppercase;opacity:.75">Priority bullet ${state.planPriorityStep+1} of ${planPriorityColumn().bullets.length}</div><div style="margin-top:6px;font-size:18px;font-weight:700">${esc(bullet)}</div><div style="margin-top:6px">Does this bullet break the tie for which district should refresh an Organization?</div></div><div class="grid">${btn("Yes","answerPlanPriority('yes')","primary")}${btn("No","answerPlanPriority('no')")}${btn(state.showHint ? "Hide hint":"Need help?","state.showHint=!state.showHint; render()","ghost")}</div>${hint}`; } else if(state.planStep==="district"){ refreshArea=`<div class="panel" style="margin-bottom:14px"><div style="font-weight:700">Choose the refresh district</div><div style="margin-top:8px">Current bullet: <b>${esc(bullet)}</b></div></div><div class="grid4">${["1","2","3","4","5","6","9"].map(d=>`<button class="btn ${state.planDistrictChoice===d?'selected':''}" onclick="choosePlanDistrict('${d}')">${d}</button>`).join("")}</div><div class="grid">${btn(`Confirm District ${state.planDistrictChoice || "?"}`, state.planDistrictChoice ? `answerPlanDistrict('${state.planDistrictChoice}')` : "void(0)", state.planDistrictChoice ? "primary":"")}${btn("Still tied","answerPlanDistrict('still_tied')")}${btn("No district","answerPlanDistrict('none')")}</div>`; } else { const refreshSummary=state.planRefreshDistrict ? `Refresh Organization in <b>District ${state.planRefreshDistrict}</b>, if possible.` : `No legal Organization refresh was identified.`; refreshArea=`<div class="panel" style="margin-bottom:14px"><div style="font-weight:700">Refresh result</div><div style="margin-top:8px">${refreshSummary}</div></div><div class="small" style="margin-bottom:8px">Next main action</div><div class="grid2">${["act","react","event","plan"].map(v=>btn(v.toUpperCase(),`recordPlannedAction('${v}')`)).join("")}</div>`; } const trace=state.planTrace.length ? `<div class="card"><div style="font-weight:700;margin-bottom:8px">Refresh trace</div>${state.planTrace.map(line=>`<div class="trace" style="margin-top:8px">${esc(line)}</div>`).join("")}</div>` : ""; app.innerHTML=`<div class="card"><div class="small">PLAN procedure • ${factions[state.selectedFaction].label} NP</div><div class="titleblue">${c.name}</div><div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div>${refreshArea}</div>${trace}`; return; }
   if(state.screen==="event_helper"){ const c=currentCard(); app.innerHTML=`<div class="card"><div class="small">EVENT procedure • ${factions[state.selectedFaction].label} NP</div><div class="titleblue">${c.name}</div><div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div><div class="panel" style="margin-bottom:14px"><div style="font-weight:700">EVENT reminder</div><div style="margin-top:8px">Refer to the current Event card and resolve its instructions first.</div><div style="margin-top:8px">Use NP General Principles and NP General Priorities for any choices required by the Event.</div><div style="margin-top:8px">If given a choice, each faction places its own Infrastructure and Organizations first. NP Public and Community place Grants before Loans; NP Private places Loans before Grants.</div></div><div class="grid">${btn("Done with Event","state.screen='dashboard'; render()","primary")}${btn("Back to mode selection","state.screen='mode'; render()")}</div></div>`; return; }
-  if(state.screen==="mode"){ const c=currentCard(); app.innerHTML=`<div class="card"><div class="small">Resolving ${factions[state.selectedFaction].label} NP</div><div class="titleblue">${c.name}</div><div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div><div class="small" style="margin-bottom:8px">Resolution mode</div><div class="grid2" style="margin-bottom:14px">${[["act","Act"],["react","React"],["plan","Plan"],["event","Event"]].map(([v,l])=>btn(l,`state.mode='${v}'; render()`, state.mode===v ? "primary":"")).join("")}</div>${btn(`Resolve ${state.mode}`,"startModeResolution()","primary")}</div>`; return; }
+  if(state.screen==="mode"){ const c=currentCard(); const helperNote=state.mode==='event'?'Choosing EVENT jumps straight into the EVENT protocol and prefills the action log.':'Resolve the selected NP action.'; app.innerHTML=`<div class="card"><div class="small">Resolving ${factions[state.selectedFaction].label} NP</div><div class="titleblue">${c.name}</div><div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div><div class="small" style="margin-bottom:8px">Resolution mode</div><div class="grid2" style="margin-bottom:14px">${[["act","Act"],["react","React"],["plan","Plan"],["event","Event"]].map(([v,l])=>btn(l,`state.mode='${v}'; render()`, state.mode===v ? "primary":"")).join("")}</div><div class="panel" style="margin-bottom:14px">${helperNote}</div>${btn(state.mode==='event' ? 'Open EVENT protocol' : `Resolve ${state.mode}`,"startModeResolution()","primary")}</div>`; return; }
   if(state.screen==="resolver"){ const c=currentCard(), r=currentRow(), q=currentQuestion(), g=currentGate(), p=currentPriority(), b=currentPriorityBullet(); const headerClass=state.selectedFaction==="public"?"header-public":state.selectedFaction==="community"?"header-community":"header-private"; const prompt=state.stage==="condition"?q.prompt:state.stage==="gate"?g.prompt:state.stage==="priority"?"Does this bullet break the tie?":"Which district wins this bullet?"; const sub=state.stage==="condition"?`Card condition: ${r.condition}`:state.stage==="gate"?`Action check: ${r.action}`:state.stage==="priority"?`${p ? p.title : "No mapped column"} • Bullet ${state.priorityStep+1}${p ? ` of ${p.bullets.length}` : ""}`:b; let actionArea=""; if(state.stage==="condition") actionArea=`<div class="grid">${btn("Yes","answerCondition('yes')","primary")}${btn("No","answerCondition('no')")}${btn("Not sure","answerCondition('not_sure')","secondary")}</div>`; else if(state.stage==="gate") actionArea=`<div class="grid">${btn("Yes","answerGate('yes')","primary")}${btn("No","answerGate('no')")}${btn("Not sure","answerGate('not_sure')","secondary")}</div>`; else if(state.stage==="priority") actionArea=`<div class="bluebullet" style="border-radius:18px;padding:14px"><div style="font-size:12px;text-transform:uppercase;opacity:.8">Priority bullet</div><div style="margin-top:4px;font-size:16px;font-weight:700">${esc(b)}</div></div><div class="grid">${btn("Yes","answerPriority('yes')","primary")}${btn("No","answerPriority('no')")}${btn("Not sure","answerPriority('not_sure')","secondary")}</div>`; else actionArea=`<div class="grid4">${["1","2","3","4","5","6","9"].map(d=>`<button class="btn ${state.districtChoice===d?'selected':''}" onclick="chooseDistrict('${d}')">${d}</button>`).join("")}</div><div class="grid">${btn(`Confirm District ${state.districtChoice || "?"}`, state.districtChoice ? `answerDistrict('${state.districtChoice}')` : "void(0)", state.districtChoice ? "primary":"")}${btn("Still tied","answerDistrict('still_tied')")}${btn("No district","answerDistrict('none')")}${btn("Not sure","answerDistrict('not_sure')","secondary")}</div>`; const targetCard=isMultiTargetMode()?`<div class="targetcard" style="border-radius:18px;padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;font-weight:700;text-transform:uppercase">◎ Targets for this action</div><div style="display:flex;flex-wrap:wrap;gap:8px">${Array.from({length:currentTargetLimit()}).map((_,idx)=>{ const value=state.selectedTargets[idx]; return `<span class="chip ${value ? 'chip-filled':'chip-empty'}">${value ? `Target ${idx+1}: District ${value}` : `Target ${idx+1}: —`}</span>`; }).join("")}</div><div style="margin-top:8px;font-size:12px">${remainingTargetSlots()>0 ? `${remainingTargetSlots()} target slot${remainingTargetSlots()===1?'':'s'} left.` : "No target slots left."}</div></div>`:""; const hint=state.showHint?`<div class="hint">${esc(currentHint())}</div>`:""; const trace=state.showTrace?`<div style="padding:0 20px 20px 20px">${state.history.length ? state.history.map(item=>`<div class="trace" style="margin-top:8px">${esc(item.reason)}</div>`).join("") : `<div class="muted">No steps logged yet.</div>`}</div>`:""; app.innerHTML=`<div class="grid4" style="font-size:12px;font-weight:600">${["condition","gate","priority","district"].map((k,i)=>`<div class="${state.stage===k?'stepon':'stepoff'}" style="border-radius:16px;padding:8px 10px;text-align:center">${["Row","Legal","Priority","District"][i]}</div>`).join("")}</div><div class="card" style="padding:0;border:1px solid #e2e8f0;overflow:hidden"><div class="${headerClass}" style="padding:20px"><div class="row"><div><div style="font-size:12px;text-transform:uppercase;opacity:.8">Current row</div><div style="margin-top:4px;font-size:18px;font-weight:700">Row ${r.index} • ${r.action}</div><div style="font-size:14px;opacity:.9">${esc(r.instruction)}</div></div><span class="badge">${esc(c.name)}</span></div><div style="margin-top:12px" class="progress"><div class="bar" style="width:${progress()}%"></div></div></div><div style="padding:20px;display:grid;gap:16px"><div class="checkcard" style="border-radius:18px;padding:14px"><div style="font-size:12px;text-transform:uppercase;color:#000">Check</div><div style="margin-top:4px;font-size:18px;font-weight:700;color:#000">${esc(prompt)}</div><div style="margin-top:8px;font-size:14px;color:#000">${esc(sub)}</div></div>${targetCard}${actionArea}<div class="grid2">${btn("‹ Back one step","stepBackResolver()")}${btn(state.showHint ? "Hide hint":"Need help?","state.showHint=!state.showHint; render()","ghost")}</div>${hint}</div></div><div class="card" style="padding:0;border:1px solid #bae6fd;overflow:hidden"><button style="display:flex;width:100%;justify-content:space-between;align-items:center;padding:16px 20px;background:transparent;border:0" onclick="state.showTrace=!state.showTrace; render()"><div><div style="font-weight:700">Why it did that</div><div class="muted">Rules trace</div></div><span class="badge">${state.showTrace ? "Hide":"Show"}</span></button>${trace}</div>`; return; }
   if(state.screen==="result" && state.result){ const r=state.result; const resultClass=r.status==="resolved"?"result-resolved":r.status==="continue"?"result-continue":"result-discard"; const iconClass=r.status==="resolved"?"iconbox ok":r.status==="continue"?"iconbox cont":"iconbox warn"; const actions=r.status==="discard"?btn("Draw replacement card","handleDiscardReplacement()"):r.status==="continue"?btn("Resolve another district","continueSameAction()")+btn("Finish this action","finishThisAction()"):btn("Resolve this NP again",`startResolver('${state.selectedFaction}')`); app.innerHTML=`<div class="card ${resultClass}"><div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px"><div class="${iconClass}">${r.status==="discard"?"!":"✓"}</div><div><div style="font-size:22px;font-weight:700">${esc(r.title)}</div><div class="muted" style="margin-top:4px">${esc(r.body)}</div></div></div><div class="grid">${btn("Return to dashboard","state.screen='dashboard'; render()","primary")}${actions}</div></div><div class="card"><div style="font-weight:700;margin-bottom:8px">Why it did that</div>${(r.trace && r.trace.length?r.trace:["No rules trace was captured for this result."]).map(line=>`<div class="trace" style="margin-top:8px">${esc(line)}</div>`).join("")}</div>`; return; }
 }
@@ -609,6 +609,10 @@ startModeResolution = function(){
     render();
     return;
   }
+  if(state.mode === 'event'){
+    openEventProtocol(true);
+    return;
+  }
   originalStartModeResolution_v2();
 };
 
@@ -623,8 +627,18 @@ answerGate = function(answer){
 
 const originalBack_v2 = back;
 back = function(){
-  if(state.screen === 'round_gate' || state.screen === 'log_action' || state.screen === 'event_protocol'){
+  if(state.screen === 'round_gate'){
     state.screen = 'dashboard';
+    render();
+    return;
+  }
+  if(state.screen === 'event_protocol'){
+    state.screen = state.eventProtocol && state.eventProtocol.fromResolver ? 'mode' : 'dashboard';
+    render();
+    return;
+  }
+  if(state.screen === 'log_action'){
+    state.screen = (state.logDraft && state.logDraft.mode === 'event' && state.selectedFaction) ? 'mode' : 'dashboard';
     render();
     return;
   }
@@ -793,10 +807,12 @@ function resetEventProtocol(){
     districts: [],
     piece: 'organization',
     housing: 'ask',
-    notes: ''
+    notes: '',
+    fromResolver: false,
+    faction: state.selectedFaction || state.playerFaction || 'public'
   };
 }
-function openEventProtocol(){
+function openEventProtocol(fromResolver=false){
   if(state.roundTracker && state.roundTracker.critical === null){
     state.roundTracker.pendingScreen = 'event_protocol';
     state.screen = 'round_gate';
@@ -804,6 +820,9 @@ function openEventProtocol(){
     return;
   }
   resetEventProtocol();
+  state.eventProtocol.fromResolver = !!fromResolver;
+  state.eventProtocol.faction = state.selectedFaction || state.playerFaction || 'public';
+  if(fromResolver) state.mode = 'event';
   state.screen = 'event_protocol';
   render();
 }
@@ -837,13 +856,22 @@ function eventProtocolTrace(ep){
 function finishEventProtocol(){
   const ep = state.eventProtocol;
   const districtSummary = ep.targeting === 'global' ? 'all eligible districts' : (ep.districts && ep.districts.length ? ep.districts.map(d => `District ${d}`).join(', ') : 'districts still to be chosen');
-  state.result = {
-    status: 'resolved',
-    title: 'EVENT protocol prepared',
-    body: `Resolve the event as a ${ep.effect.toUpperCase()} effect on ${districtSummary}. Then log the resulting board changes.`,
-    trace: eventProtocolTrace(ep)
-  };
-  state.screen = 'result';
+  resetLogDraft();
+  state.logDraft.faction = ep.faction || state.selectedFaction || state.playerFaction || 'public';
+  state.logDraft.mode = 'event';
+  state.logDraft.districts = ep.targeting === 'global' ? [] : [...(ep.districts || [])];
+  const changeMap = { population:'population', vulnerability:'vulnerability', organization:'organization', infrastructure:'infrastructure', marker:'markers' };
+  const mapped = changeMap[ep.piece];
+  if(mapped) state.logDraft.changes[mapped] = true;
+  if(ep.effect === 'marker') state.logDraft.changes.markers = true;
+  state.logDraft.notes = [
+    ep.card ? `Card: ${ep.card}` : '',
+    `Effect: ${ep.effect}`,
+    `Targeting: ${ep.targeting}`,
+    (ep.effect === 'place' || ep.effect === 'move' || ep.effect === 'exhaust') ? `Housing: ${ep.housing}` : '',
+    ep.notes || ''
+  ].filter(Boolean).join(' | ');
+  state.screen = 'log_action';
   render();
 }
 function advanceRound(){
@@ -910,10 +938,10 @@ render = function(){
       <div class="card">
         <div class="row" style="margin-bottom:12px;align-items:center">
           <div>
-            <div class="small">You are playing</div>
-            <div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div>
+            <div class="small">Round controls</div>
+            <div style="font-size:22px;font-weight:800">Round ${state.roundTracker.round} / ${state.roundTracker.max}</div>
           </div>
-          <span class="badge">Round ${state.roundTracker.round} / ${state.roundTracker.max}</span>
+          <span class="badge">${esc(criticalLabel)}</span>
         </div>
         <div class="panel" style="margin-bottom:14px">
           <div><b>Current round event:</b> ${esc(criticalLabel)}</div>
@@ -922,13 +950,18 @@ render = function(){
         </div>
         <div class="grid2">
           ${btn(state.roundTracker.critical === null ? 'Round start: critical event?' : 'Edit round critical check', "state.screen='round_gate'; render()", 'primary')}
-          ${btn('Log completed action', "openActionLogger()")}
-          ${btn('EVENT protocol', "openEventProtocol()", state.roundTracker.critical ? 'primary' : '')}
           ${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8 → Census' : `End round ${state.roundTracker.round} → next round`, 'advanceRound()')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="small">You are playing</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">${factions[state.playerFaction].label}</div>
+        <div class="grid2">
+          ${btn('Log completed action', "openActionLogger()")}
           ${btn('Save / load state', "state.screen='save_load'; render()")}
         </div>
       </div>
-      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Resolve turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
+      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
       <div class="card">
         <div style="font-weight:700;margin-bottom:8px">Recent assisted state log</div>
         ${recentLog.length ? recentLog.map(item=>`<div class="trace" style="margin-top:8px">${esc(actionLogSummary(item))}</div>`).join('') : '<div class="muted">No actions logged yet.</div>'}
@@ -951,7 +984,7 @@ render = function(){
         </div>
         <div class="grid2">
           ${btn('Continue', 'continueRoundGate()', locked !== null ? 'primary' : '')}
-          ${btn('Back to dashboard', "state.screen='dashboard'; render()")}
+          ${btn(state.logDraft.mode === 'event' && state.selectedFaction ? 'Back to mode selection' : 'Back to dashboard', state.logDraft.mode === 'event' && state.selectedFaction ? "state.screen='mode'; render()" : "state.screen='dashboard'; render()")}
         </div>
       </div>`;
     return;
@@ -967,7 +1000,7 @@ render = function(){
         <div class="grid2" style="margin-bottom:14px">${Object.keys(factions).map(f=>btn(factions[f].label, `setLogFaction('${f}')`, state.logDraft.faction===f ? 'primary' : '')).join('')}</div>
         <div class="small" style="margin-bottom:8px">Action type</div>
         <div class="grid2" style="margin-bottom:14px">${['act','event','react','plan'].map(m=>btn(m.toUpperCase(), `setLogMode('${m}')`, state.logDraft.mode===m ? 'primary' : '')).join('')}</div>
-        ${state.logDraft.mode === 'event' ? `<div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Need help resolving NP placement for EVENT?</div><div class="grid2">${btn('Open EVENT protocol', 'openEventProtocol()', 'primary')}${btn('Keep logging manually', 'render()')}</div></div>` : ''}
+        ${state.logDraft.mode === 'event' ? `<div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">EVENT protocol</div><div class="grid2">${btn('Open EVENT protocol', 'openEventProtocol(state.selectedFaction===state.logDraft.faction)', 'primary')}${btn('Keep logging manually', 'render()')}</div></div>` : ''}
         <div class="small" style="margin-bottom:8px">Affected districts</div>
         <div class="grid4" style="margin-bottom:14px">${DISTRICTS.map(d=>`<button class="btn ${(state.logDraft.districts||[]).includes(d)?'selected':''}" onclick="toggleLogDistrict('${d}')">${d}</button>`).join('')}</div>
         <div class="small" style="margin-bottom:8px">What changed on the board?</div>
@@ -990,9 +1023,9 @@ render = function(){
     const housingOptions = [['ask','Ask housing / coalition follow-up'],['housed','Place housed if possible'],['unhoused','Leave unhoused until assigned']];
     app.innerHTML = `
       <div class="card">
-        <div class="small">Reusable EVENT branch</div>
+        <div class="small">EVENT branch for ${factions[ep.faction || state.selectedFaction || state.playerFaction].label}</div>
         <div style="font-size:22px;font-weight:800;margin-bottom:12px">EVENT protocol</div>
-        <div class="panel" style="margin-bottom:14px">Use this when an NP faction takes EVENT or when a critical event needs help with placement logic. The goal is not to hardcode every card yet; it is to standardize how event effects pick districts and what gets placed, moved, removed, or rehoused.</div>
+        <div class="panel" style="margin-bottom:14px">Use this when an NP faction takes EVENT, or when a critical event needs help with placement logic. The goal is not to hardcode every card yet; it is to standardize how event effects pick districts and what gets placed, moved, removed, or rehoused.</div>
         <div class="small" style="margin-bottom:8px">Event card or short label</div>
         <input value="${esc(ep.card || '')}" oninput="setEventField('card', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px;font:inherit;margin-bottom:14px">
         <div class="small" style="margin-bottom:8px">Effect type</div>
@@ -1005,7 +1038,7 @@ render = function(){
         ${(ep.effect === 'place' || ep.effect === 'move' || ep.effect === 'exhaust') ? `<div class="small" style="margin-bottom:8px">Placement / rehousing follow-up</div><div class="grid2" style="margin-bottom:14px">${housingOptions.map(([v,l])=>btn(l, `setEventField('housing','${v}')`, ep.housing===v ? 'primary' : '')).join('')}</div>` : ''}
         <textarea oninput="updateEventNotes(this.value)" style="width:100%;min-height:120px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit" placeholder="Card-specific notes, special instructions, or weirdness you want to remember">${esc(ep.notes || '')}</textarea>
         <div class="grid2" style="margin-top:14px">
-          ${btn('Back to dashboard', "state.screen='dashboard'; render()")}${btn('Prepare EVENT resolution', 'finishEventProtocol()', 'primary')}
+          ${btn(state.eventProtocol.fromResolver ? 'Back to mode selection' : 'Back to dashboard', state.eventProtocol.fromResolver ? "state.screen='mode'; render()" : "state.screen='dashboard'; render()")}${btn('Prefill EVENT log', 'finishEventProtocol()', 'primary')}
         </div>
       </div>`;
     return;
