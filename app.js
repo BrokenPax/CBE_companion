@@ -83,3 +83,479 @@ function render(){
 window.state=state; window.render=render; window.beginSoloSetup=beginSoloSetup; window.choosePlayerFaction=choosePlayerFaction; window.chooseNpcCard=chooseNpcCard; window.startResolver=startResolver; window.startModeResolution=startModeResolution; window.recordPlannedAction=recordPlannedAction; window.answerCondition=answerCondition; window.answerGate=answerGate; window.answerPriority=answerPriority; window.chooseDistrict=chooseDistrict; window.answerDistrict=answerDistrict; window.continueSameAction=continueSameAction; window.finishThisAction=finishThisAction; window.handleDiscardReplacement=handleDiscardReplacement; window.stepBackResolver=stepBackResolver; window.answerPlanPriority=answerPlanPriority; window.choosePlanDistrict=choosePlanDistrict; window.answerPlanDistrict=answerPlanDistrict;
 if('serviceWorker' in navigator){ window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); }
 render();
+
+// --- Phase 2 enhancements ---
+Object.assign(state, {
+  eventWizard: { critical: null, boxes: { act: true, event: true, react: true, plan: true }, notes: "" },
+  censusHelper: {
+    step: 0,
+    checks: { quota: false, correct: false, audit: false, objectives: false, reset: false },
+    notes: { quota: "", correct: "", audit: "", objectives: "", reset: "" }
+  },
+  districtHelper: { column: "place_population", mode: "target", candidates: ["1","2","3","4","5","6","9"], chosen: null },
+  saveLoadText: "",
+  lastSavedAt: null
+});
+
+const DISTRICTS = ["1", "2", "3", "4", "5", "6", "9"];
+const REACT_LOCKED_ACTIONS = ["HOUSE", "BUILD", "DEVELOP"];
+const LOCAL_SAVE_KEY = "cbe-np-companion-state-v2";
+
+function deepClone(v){ return JSON.parse(JSON.stringify(v)); }
+function helperBtn(label, onclick, tone="") { return btn(label, onclick, tone); }
+function gridButtons(items, cls="grid2") { return `<div class="${cls}">${items.join("")}</div>`; }
+function toggleCandidateDistrict(d){
+  const set = new Set(state.districtHelper.candidates || []);
+  if(set.has(d)) set.delete(d); else set.add(d);
+  state.districtHelper.candidates = DISTRICTS.filter(x => set.has(x));
+  if(state.districtHelper.chosen && !set.has(state.districtHelper.chosen)) state.districtHelper.chosen = null;
+  render();
+}
+function clearCandidateDistricts(){ state.districtHelper.candidates = []; state.districtHelper.chosen = null; render(); }
+function resetCandidateDistricts(){ state.districtHelper.candidates = [...DISTRICTS]; state.districtHelper.chosen = null; render(); }
+function chooseHelperDistrict(d){
+  if(!(state.districtHelper.candidates || []).includes(d)) return;
+  state.districtHelper.chosen = d;
+  render();
+}
+function districtModeLabel(){ return state.districtHelper.mode === "target" ? "move to / place / refresh" : "remove from / activate"; }
+function boardHelperSummary(){
+  const col = priorityColumns[state.districtHelper.column];
+  const candidates = state.districtHelper.candidates || [];
+  const chosen = state.districtHelper.chosen;
+  return `${col ? col.title : "Priority"} • ${districtModeLabel()} • ${candidates.length} candidate${candidates.length === 1 ? "" : "s"}${chosen ? ` • Winner: District ${chosen}` : ""}`;
+}
+
+function saveStateLocal(){
+  const payload = deepClone(state);
+  localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(payload));
+  state.lastSavedAt = new Date().toISOString();
+  state.result = {
+    status: "resolved",
+    title: "State saved",
+    body: "The current companion state was saved in this browser.",
+    trace: [`Saved local state at ${state.lastSavedAt}.`]
+  };
+  state.screen = "result";
+  render();
+}
+function loadStateLocal(){
+  const raw = localStorage.getItem(LOCAL_SAVE_KEY);
+  if(!raw){
+    state.result = { status: "discard", title: "No saved state", body: "There is no saved browser state yet.", trace: ["Local save slot was empty."] };
+    state.screen = "result";
+    render();
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    for(const k of Object.keys(state)) delete state[k];
+    Object.assign(state, parsed);
+    render();
+  } catch(err) {
+    state.result = { status: "discard", title: "Load failed", body: "The saved state could not be parsed.", trace: [String(err)] };
+    state.screen = "result";
+    render();
+  }
+}
+function exportStateText(){ state.saveLoadText = JSON.stringify(state, null, 2); render(); }
+function importStateText(){
+  try {
+    const parsed = JSON.parse(state.saveLoadText || "{}");
+    for(const k of Object.keys(state)) delete state[k];
+    Object.assign(state, parsed);
+    render();
+  } catch(err) {
+    state.result = { status: "discard", title: "Import failed", body: "That JSON could not be parsed.", trace: [String(err)] };
+    state.screen = "result";
+    render();
+  }
+}
+function updateSaveLoadText(v){ state.saveLoadText = v; }
+
+function setEventCritical(v){ state.eventWizard.critical = v; render(); }
+function toggleEventBox(box){ state.eventWizard.boxes[box] = !state.eventWizard.boxes[box]; render(); }
+function updateEventWizardNotes(v){ state.eventWizard.notes = v; }
+function eventWizardRecommendation(){
+  const boxes = state.eventWizard.boxes || {};
+  if(state.eventWizard.critical === true){
+    if(boxes.event){
+      return {
+        title: "Choose EVENT",
+        body: "This event is critical. If EVENT is available, the NP faction should take EVENT before normal action priorities.",
+        trace: ["Critical event selected.", "Critical events override normal NP action selection when EVENT is available."]
+      };
+    }
+    return {
+      title: "EVENT was blocked",
+      body: "The event is critical, but EVENT is marked unavailable. Fall back to the Position card priority sequence for the next available box.",
+      trace: ["Critical event selected.", "EVENT box unavailable, so fall back to normal NP action priority."]
+    };
+  }
+  return {
+    title: "Use normal action priority",
+    body: "This event is not critical. Follow the NP Position card sequence and pick the first available action box.",
+    trace: ["Non-critical event selected.", "No override applies."]
+  };
+}
+function finishEventWizard(){
+  const rec = eventWizardRecommendation();
+  state.result = {
+    status: "resolved",
+    title: rec.title,
+    body: rec.body,
+    trace: [...rec.trace, state.eventWizard.notes ? `Notes: ${state.eventWizard.notes}` : null].filter(Boolean)
+  };
+  state.screen = "result";
+  render();
+}
+
+function setCensusStep(idx){ state.censusHelper.step = idx; render(); }
+function toggleCensusCheck(key){ state.censusHelper.checks[key] = !state.censusHelper.checks[key]; render(); }
+function updateCensusNote(key, v){ state.censusHelper.notes[key] = v; }
+function openDistrictHelper(column = null, mode = null){
+  if(column) state.districtHelper.column = column;
+  if(mode) state.districtHelper.mode = mode;
+  state.screen = "district_helper";
+  render();
+}
+
+const oldBack = back;
+back = function(){
+  if(["event_wizard", "census_helper", "district_helper", "save_load"].includes(state.screen)){
+    state.screen = "dashboard";
+    render();
+    return;
+  }
+  oldBack();
+};
+
+const oldResetAll = resetAll;
+resetAll = function(){
+  oldResetAll();
+  Object.assign(state, {
+    eventWizard: { critical: null, boxes: { act: true, event: true, react: true, plan: true }, notes: "" },
+    censusHelper: {
+      step: 0,
+      checks: { quota: false, correct: false, audit: false, objectives: false, reset: false },
+      notes: { quota: "", correct: "", audit: "", objectives: "", reset: "" }
+    },
+    districtHelper: { column: "place_population", mode: "target", candidates: [...DISTRICTS], chosen: null },
+    saveLoadText: "",
+    lastSavedAt: null
+  });
+  render();
+};
+
+actionGates.HOUSE.reactLocked = true;
+actionGates.BUILD.reactLocked = true;
+actionGates.DEVELOP.reactLocked = true;
+
+const oldAnswerCondition = answerCondition;
+answerCondition = function(answer){
+  const row = currentRow();
+  if(answer === "yes" && state.mode === "react" && row && REACT_LOCKED_ACTIONS.includes(row.action)){
+    moveToNextRow(`Row ${row.index} matched, but ${row.action} is illegal during REACT. Skip to the next row.`);
+    return;
+  }
+  oldAnswerCondition(answer);
+};
+
+const oldRecordPlannedAction = recordPlannedAction;
+recordPlannedAction = function(nextAction){
+  const refreshLine = state.planRefreshDistrict
+    ? `Refresh Organization in District ${state.planRefreshDistrict}, if possible.`
+    : `No legal Organization refresh was identified, so skip the refresh.`;
+  const candidateLine = (state.districtHelper.candidates || []).length < DISTRICTS.length
+    ? `Candidate districts filtered to: ${(state.districtHelper.candidates || []).join(", ") || "none"}.`
+    : `No district filter was applied.`;
+  oldRecordPlannedAction(nextAction);
+  if(state.result && Array.isArray(state.result.trace)){
+    state.result.trace.unshift(candidateLine);
+    state.result.trace.unshift(refreshLine);
+    state.result.body = `PLAN resolved. ${refreshLine} Next main action: ${nextAction.toUpperCase()}.`;
+  }
+};
+
+const originalRender = render;
+render = function(){
+  const app = document.getElementById("app");
+
+  if(state.screen === "dashboard"){
+    const selected = state.selectedFaction ? factions[state.selectedFaction].label : "—";
+    const planned = Object.entries(state.npPlannedActions || {}).map(([k,v]) => `<div class="trace">${esc(factions[k].label)} next: <b>${esc(String(v || "—").toUpperCase())}</b></div>`).join("") || `<div class="trace">No planned actions recorded yet.</div>`;
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Cross Bronx NP Companion</div>
+        <div style="font-size:24px;font-weight:800;margin-bottom:10px">Phase 2 tools</div>
+        <div class="panel" style="margin-bottom:14px">
+          <div><b>Selected NP:</b> ${esc(selected)}</div>
+          <div style="margin-top:6px"><b>Planned actions:</b></div>
+          <div style="margin-top:8px">${planned}</div>
+        </div>
+        <div class="grid2">
+          ${helperBtn("Interactive PLAN resolver", "state.screen='plan_helper'; render()", "primary")}
+          ${helperBtn("Critical-event wizard", "state.screen='event_wizard'; render()")}
+          ${helperBtn("Census helper mode", "state.screen='census_helper'; render()")}
+          ${helperBtn("District filter helper", "state.screen='district_helper'; render()")}
+          ${helperBtn("Save / load state", "state.screen='save_load'; render()")}
+          ${helperBtn("Run normal NP resolver", "state.selectedFaction ? startResolver(state.selectedFaction) : beginSoloSetup()")}
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div style="font-weight:700">React legality lockout</div>
+          <div style="margin-top:8px">HOUSE, BUILD, and DEVELOP are automatically skipped during REACT.</div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  if(state.screen === "event_wizard"){
+    const boxes = state.eventWizard.boxes || {};
+    const boxKeys = ["act","event","react","plan"];
+    const recommendation = eventWizardRecommendation();
+    const boxButtons = boxKeys.map(k => {
+      const label = `${boxes[k] ? "✓" : "—"} ${k.toUpperCase()}`;
+      return helperBtn(label, `toggleEventBox('${k}')`, boxes[k] ? "primary" : "");
+    }).join("");
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">EVENT selection wizard</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Critical event check</div>
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700">What counts as critical?</div>
+          <div style="margin-top:8px">An event is critical if it exhausts any Infrastructure, or places or replaces any Organization that is not faction-specific.</div>
+        </div>
+        ${gridButtons([
+          helperBtn("Critical event", "setEventCritical(true)", state.eventWizard.critical === true ? "primary" : ""),
+          helperBtn("Not critical", "setEventCritical(false)", state.eventWizard.critical === false ? "primary" : "")
+        ])}
+        <div class="small" style="margin:14px 0 8px">Which action boxes are still available this round?</div>
+        <div class="grid2">${boxButtons}</div>
+        <div class="panel" style="margin:14px 0">
+          <div style="font-weight:700">Recommendation</div>
+          <div style="margin-top:8px">${esc(recommendation.body)}</div>
+        </div>
+        <div class="small" style="margin-bottom:8px">Notes</div>
+        <textarea oninput="updateEventWizardNotes(this.value)" style="width:100%;min-height:110px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit">${esc(state.eventWizard.notes || "")}</textarea>
+        ${gridButtons([
+          helperBtn("Finish wizard", "finishEventWizard()", "primary"),
+          helperBtn("Back to dashboard", "state.screen='dashboard'; render()")
+        ])}
+      </div>`;
+    return;
+  }
+
+  if(state.screen === "census_helper"){
+    const steps = [
+      ["quota", "Quota / Corrections / Petitions"],
+      ["correct", "Correct / Loans / Bonds"],
+      ["audit", "Audit / Comptroller"],
+      ["objectives", "Objectives / Goal stars"],
+      ["reset", "Reset / Cleanup"]
+    ];
+    const current = steps[state.censusHelper.step];
+    const key = current[0];
+    let guidance = "";
+    if(key === "quota"){
+      guidance = `<div>NP Public and NP Community each pay to move one Vulnerability from Corrections, if possible. NP Private never pays for this.</div><div>For Petitions & Blight: Public prefers districts with at least five Population in Public Infrastructure, most Population first. Community and Private prefer districts with most own Organizations, then highest Population.</div>`;
+    } else if(key === "correct"){
+      guidance = `<div>NP Public and NP Community always pay to return Loans if possible.</div><div>NP Public pays back Bonds if doing so does not put them into debt. Private Bonds are repaid before Community Bonds.</div>`;
+    } else if(key === "audit"){
+      guidance = `<div>NP Public offers one Bond to each other faction.</div><div>NP Private always buys if possible. NP Community buys only if it does not already have one.</div><div>NP Public sets Taxes to 1 if possible.</div>`;
+    } else if(key === "objectives"){
+      guidance = `<div>Check whether the current card's Priority Objective was achieved during Census.</div><div>If the final listed action row was completed, award a goal star and check for a Victory Point.</div>`;
+    } else {
+      guidance = `<div>Refresh and cleanup as normal. If a Position card scored through either its goal or priority objective, move it to the Record at the end of Census.</div>`;
+    }
+    const tabs = steps.map((step, idx) => helperBtn(step[1], `setCensusStep(${idx})`, state.censusHelper.step === idx ? "primary" : "")).join("");
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Census helper mode</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">${esc(current[1])}</div>
+        <div class="grid" style="margin-bottom:14px">${tabs}</div>
+        <div class="panel" style="margin-bottom:14px">${guidance}</div>
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <input type="checkbox" ${state.censusHelper.checks[key] ? "checked" : ""} onchange="toggleCensusCheck('${key}')">
+          <span>Mark this step complete</span>
+        </label>
+        <textarea oninput="updateCensusNote('${key}', this.value)" style="width:100%;min-height:120px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit">${esc(state.censusHelper.notes[key] || "")}</textarea>
+        ${gridButtons([
+          helperBtn("Previous", `setCensusStep(${Math.max(0, state.censusHelper.step - 1)})`),
+          helperBtn("Next", `setCensusStep(${Math.min(steps.length - 1, state.censusHelper.step + 1)})`, "primary")
+        ])}
+      </div>`;
+    return;
+  }
+
+  if(state.screen === "district_helper"){
+    const col = priorityColumns[state.districtHelper.column];
+    const candidates = state.districtHelper.candidates || [];
+    const columnButtons = Object.entries(priorityColumns).map(([k,v]) => helperBtn(v.title, `state.districtHelper.column='${k}'; render()`, state.districtHelper.column === k ? "primary" : "")).join("");
+    const candidateButtons = DISTRICTS.map(d => {
+      const active = candidates.includes(d);
+      const selected = state.districtHelper.chosen === d;
+      const cls = selected ? "selected" : (active ? "primary" : "");
+      return `<button class="btn ${cls}" onclick="toggleCandidateDistrict('${d}')">${active ? "✓" : "—"} ${d}</button>`;
+    }).join("");
+    const finalButtons = candidates.map(d => helperBtn(`District ${d}`, `chooseHelperDistrict('${d}')`, state.districtHelper.chosen === d ? "primary" : "")).join("") || `<div class="muted">No candidates left.</div>`;
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">District helper</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">Candidate district filtering</div>
+        <div class="small" style="margin-bottom:8px">Priority column</div>
+        <div class="grid">${columnButtons}</div>
+        <div class="small" style="margin:14px 0 8px">Use this helper for</div>
+        ${gridButtons([
+          helperBtn("Move to / place / refresh", "state.districtHelper.mode='target'; render()", state.districtHelper.mode === "target" ? "primary" : ""),
+          helperBtn("Remove from / activate", "state.districtHelper.mode='source'; render()", state.districtHelper.mode === "source" ? "primary" : "")
+        ])}
+      </div>
+      <div class="card">
+        <div style="font-size:18px;font-weight:700">${esc(col.title)}</div>
+        <div class="muted" style="margin-top:6px">Work top to bottom. Eliminate districts until one survivor remains.</div>
+        <div class="panel" style="margin:14px 0">
+          <div style="font-weight:700">Current use</div>
+          <div style="margin-top:8px">${esc(districtModeLabel())}</div>
+        </div>
+        <div class="grid4" style="margin-bottom:14px">${candidateButtons}</div>
+        ${gridButtons([
+          helperBtn("Reset all", "resetCandidateDistricts()"),
+          helperBtn("Clear all", "clearCandidateDistricts()")
+        ])}
+        <div class="small" style="margin:14px 0 8px">Choose final district from survivors</div>
+        <div class="grid4">${finalButtons}</div>
+        <div class="panel" style="margin-top:14px">
+          <div style="font-weight:700">Summary</div>
+          <div style="margin-top:8px">${esc(boardHelperSummary())}</div>
+        </div>
+        ${gridButtons([
+          helperBtn("Back to dashboard", "state.screen='dashboard'; render()"),
+          helperBtn("Keep this result", "state.screen='dashboard'; render()", "primary")
+        ])}
+      </div>`;
+    return;
+  }
+
+  if(state.screen === "save_load"){
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">Save / load</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:12px">State control</div>
+        <div class="grid2" style="margin-bottom:14px">
+          ${helperBtn("Save in browser", "saveStateLocal()", "primary")}
+          ${helperBtn("Load from browser", "loadStateLocal()")}
+          ${helperBtn("Export JSON", "exportStateText()")}
+          ${helperBtn("Import JSON", "importStateText()")}
+        </div>
+        <div class="panel" style="margin-bottom:14px">Local saves stay in this browser. JSON export/import lets you move the state wherever your little rules goblin desires.</div>
+        <textarea oninput="updateSaveLoadText(this.value)" style="width:100%;min-height:220px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit">${esc(state.saveLoadText || "")}</textarea>
+        ${gridButtons([
+          helperBtn("Back to dashboard", "state.screen='dashboard'; render()"),
+          helperBtn("Load pasted JSON", "importStateText()", "primary")
+        ])}
+      </div>`;
+    return;
+  }
+
+  if(state.screen === "plan_helper"){
+    const c = currentCard();
+    const bullet = currentPlanBullet();
+    const hint = state.showHint ? `<div class="hint">Use the <b>Place / Replace / Refresh Organization</b> priority column. You can also jump to the district helper for a more visual elimination pass.</div>` : "";
+    let refreshArea = "";
+
+    if(state.planStep === "intro"){
+      refreshArea = `
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700">PLAN checklist</div>
+          <div style="margin-top:8px">1. Do <b>not</b> call an Audit for NP PLAN.</div>
+          <div>2. Refresh one Organization if possible using <b>Place / Replace / Refresh Organization</b>.</div>
+          <div>3. Record the next main action for next round.</div>
+        </div>
+        ${gridButtons([
+          helperBtn("Run refresh protocol", "state.planStep='priority'; state.showHint=false; render()", "primary"),
+          helperBtn("Open district helper", "openDistrictHelper('place_replace_refresh_organization','target')")
+        ])}`;
+    } else if(state.planStep === "priority"){
+      refreshArea = `
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700">Refresh protocol</div>
+          <div style="margin-top:8px;font-size:12px;text-transform:uppercase;opacity:.75">Priority bullet ${state.planPriorityStep + 1} of ${planPriorityColumn().bullets.length}</div>
+          <div style="margin-top:6px;font-size:18px;font-weight:700">${esc(bullet)}</div>
+          <div style="margin-top:6px">Does this bullet break the tie for the refresh district?</div>
+        </div>
+        <div class="grid2">
+          ${helperBtn("Yes", "answerPlanPriority('yes')", "primary")}
+          ${helperBtn("No", "answerPlanPriority('no')")}
+          ${helperBtn(state.showHint ? "Hide hint" : "Need help?", "state.showHint=!state.showHint; render()", "ghost")}
+          ${helperBtn("Use district helper", "openDistrictHelper('place_replace_refresh_organization','target')")}
+        </div>
+        ${hint}`;
+    } else if(state.planStep === "district"){
+      const districtButtons = DISTRICTS.map(d => helperBtn(`District ${d}`, `choosePlanDistrict('${d}')`, state.planDistrictChoice === d ? "primary" : "")).join("");
+      refreshArea = `
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700">Choose the refresh district</div>
+          <div style="margin-top:8px">Current bullet: <b>${esc(bullet)}</b></div>
+        </div>
+        <div class="grid4">${districtButtons}</div>
+        <div class="grid2">
+          ${helperBtn(`Confirm District ${state.planDistrictChoice || "?"}`, state.planDistrictChoice ? `answerPlanDistrict('${state.planDistrictChoice}')` : "void(0)", state.planDistrictChoice ? "primary" : "")}
+          ${helperBtn("Still tied", "answerPlanDistrict('still_tied')")}
+          ${helperBtn("No district", "answerPlanDistrict('none')")}
+          ${helperBtn("Use district helper", "openDistrictHelper('place_replace_refresh_organization','target')")}
+        </div>`;
+    } else {
+      const refreshSummary = state.planRefreshDistrict ? `Refresh Organization in <b>District ${state.planRefreshDistrict}</b>, if possible.` : `No legal Organization refresh was identified.`;
+      refreshArea = `
+        <div class="panel" style="margin-bottom:14px">
+          <div style="font-weight:700">Refresh result</div>
+          <div style="margin-top:8px">${refreshSummary}</div>
+        </div>
+        <div class="small" style="margin-bottom:8px">Next main action</div>
+        <div class="grid2">
+          ${["act","react","event","plan"].map(v => helperBtn(v.toUpperCase(), `recordPlannedAction('${v}')`, v === "act" ? "primary" : "")).join("")}
+        </div>`;
+    }
+
+    const trace = state.planTrace.length
+      ? `<div class="card"><div style="font-weight:700;margin-bottom:8px">Refresh trace</div>${state.planTrace.map(line => `<div class="trace" style="margin-top:8px">${esc(line)}</div>`).join("")}</div>`
+      : "";
+
+    app.innerHTML = `
+      <div class="card">
+        <div class="small">PLAN procedure • ${esc(factions[state.selectedFaction].label)} NP</div>
+        <div class="titleblue">${esc(c.name)}</div>
+        <div class="objblue" style="margin-bottom:14px">Objective: ${esc(c.objective)}</div>
+        ${refreshArea}
+      </div>
+      ${trace}`;
+    return;
+  }
+
+  originalRender();
+};
+
+window.render = render;
+window.back = back;
+window.resetAll = resetAll;
+window.answerCondition = answerCondition;
+window.recordPlannedAction = recordPlannedAction;
+window.saveStateLocal = saveStateLocal;
+window.loadStateLocal = loadStateLocal;
+window.exportStateText = exportStateText;
+window.importStateText = importStateText;
+window.updateSaveLoadText = updateSaveLoadText;
+window.setEventCritical = setEventCritical;
+window.toggleEventBox = toggleEventBox;
+window.updateEventWizardNotes = updateEventWizardNotes;
+window.finishEventWizard = finishEventWizard;
+window.setCensusStep = setCensusStep;
+window.toggleCensusCheck = toggleCensusCheck;
+window.updateCensusNote = updateCensusNote;
+window.openDistrictHelper = openDistrictHelper;
+window.toggleCandidateDistrict = toggleCandidateDistrict;
+window.clearCandidateDistricts = clearCandidateDistricts;
+window.resetCandidateDistricts = resetCandidateDistricts;
+window.chooseHelperDistrict = chooseHelperDistrict;
+
+render();
