@@ -1806,3 +1806,185 @@ window.toggleEventStepManual = toggleEventStepManual;
 window.toggleEventStepChange = toggleEventStepChange;
 window.finishEventProtocol = finishEventProtocol;
 window.render = render;
+
+
+// --- r7 critical-only event wizard + board setup integration ---
+const BOARD_SETUP_PRESETS = {
+  '1940': {
+    label: '1940 setup',
+    deck: '1940s',
+    resources: { public: 7, community: 5, private: 9 },
+    losses: 0,
+    taxRate: '1/2',
+    corrections: 6,
+    factionArea: { public: { loans: 0, grants: 0 }, community: { loans: 0, grants: 0 }, private: { loans: 0, grants: 0 } },
+    districts: {
+      '1': { infrastructures: [ { faction: 'private', population: 2, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '2': { infrastructures: [ { faction: 'public', population: 5, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '3': { infrastructures: [ { faction: 'public', population: 5, vulnerability: 1, organizations: [ { faction: 'public' } ] }, { faction: 'community', population: 4, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '4': { infrastructures: [ { faction: 'community', population: 5, vulnerability: 1, organizations: [ { faction: 'public', loan: true }, { faction: 'community' } ], coalition: 'social' }, { faction: 'public', population: 3, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '5': { infrastructures: [ { faction: 'private', population: 5, vulnerability: 1, organizations: [] }, { faction: 'public', population: 1, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '6': { infrastructures: [ { faction: 'private', population: 5, vulnerability: 1, organizations: [ { faction: 'private' } ] }, { faction: 'community', population: 4, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 0 } },
+      '9': { infrastructures: [ { faction: 'private', population: 4, vulnerability: 1, organizations: [ { faction: 'private' } ] } ], unhoused: { population: 0, vulnerability: 1 } }
+    }
+  },
+  '1950': {
+    label: '1950 setup',
+    deck: '1950s',
+    resources: { public: 5, community: 3, private: 4 },
+    losses: 0,
+    taxRate: '1/2',
+    corrections: 8,
+    factionArea: { public: { loans: 1, grants: 0 }, community: { loans: 0, grants: 0 }, private: { loans: 0, grants: 0 } },
+    districts: {
+      '1': { infrastructures: [ { faction: 'private', population: 4, vulnerability: 1, organizations: [ { faction: 'private' } ] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '2': { infrastructures: [ { faction: 'public', population: 2, vulnerability: 1, organizations: [ { faction: 'public' } ] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '3': { infrastructures: [ { faction: 'community', population: 5, vulnerability: 1, organizations: [ { faction: 'public' }, { faction: 'private' } ], coalition: 'economic' }, { faction: 'private', population: 3, vulnerability: 1, organizations: [ { faction: 'community' }, { faction: 'private' } ], coalition: 'economic' } ], unhoused: { population: 0, vulnerability: 1 } },
+      '4': { infrastructures: [ { faction: 'community', population: 5, vulnerability: 1, organizations: [ { faction: 'public' }, { faction: 'community' } ], coalition: 'social' }, { faction: 'public', population: 4, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '5': { infrastructures: [ { faction: 'private', population: 5, vulnerability: 1, organizations: [ { faction: 'private' } ] }, { faction: 'community', population: 3, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 1 } },
+      '6': { infrastructures: [ { faction: 'private', population: 5, vulnerability: 1, organizations: [ { faction: 'public' }, { faction: 'community' } ], coalition: 'social' }, { faction: 'community', population: 2, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 0 } },
+      '9': { infrastructures: [ { faction: 'private', population: 5, vulnerability: 1, organizations: [ { faction: 'private' } ] }, { faction: 'public', population: 2, vulnerability: 1, organizations: [] } ], unhoused: { population: 0, vulnerability: 0 } }
+    }
+  }
+};
+
+function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
+function ensureBoardState(){
+  state.boardState = state.boardState || null;
+  state.currentSetup = state.currentSetup || null;
+}
+function loadBoardSetupPreset(key){
+  ensureBoardState();
+  const preset = BOARD_SETUP_PRESETS[key];
+  if(!preset) return;
+  state.currentSetup = key;
+  state.boardState = deepClone(preset);
+  state.roundTracker = state.roundTracker || { round: 1, max: 8, critical: null, checked: false, pendingScreen: null };
+  state.roundTracker.round = 1;
+  state.roundTracker.critical = null;
+  state.roundTracker.checked = false;
+  state.roundTracker.pendingScreen = null;
+  if(state.eventProtocol){
+    state.eventProtocol.decade = preset.deck;
+    state.eventProtocol.cardKey = '';
+    state.eventProtocol.card = '';
+    state.eventProtocol.currentStep = 0;
+  }
+  state.actionLog = state.actionLog || [];
+  state.actionLog.unshift({
+    faction: 'system',
+    mode: 'setup',
+    round: 1,
+    title: `${preset.label} loaded`,
+    body: `${preset.label} loaded. Resources — PUB ${preset.resources.public}, COM ${preset.resources.community}, PRI ${preset.resources.private}. Corrections ${preset.corrections}.`,
+    trace: [`Loaded ${preset.label}.`, `Deck set to ${preset.deck}.`, 'Round reset to 1.']
+  });
+  state.screen = 'dashboard';
+  render();
+}
+function boardStateSummaryHtml(){
+  ensureBoardState();
+  if(!state.boardState) return `<div class="panel"><div style="font-weight:700;margin-bottom:8px">Board setup</div><div class="muted" style="margin-bottom:10px">Load a decade setup to initialize assisted state tracking before round 1.</div><div class="grid2">${btn('Load 1940 setup', "loadBoardSetupPreset('1940')", 'primary')}${btn('Load 1950 setup', "loadBoardSetupPreset('1950')", 'primary')}</div></div>`;
+  const bs = state.boardState;
+  const districtRows = Object.entries(bs.districts).map(([d, info]) => {
+    const infraText = info.infrastructures.map((inf, idx) => {
+      const orgs = (inf.organizations||[]).map(o => `${factions[o.faction].short}${o.loan ? ' loan' : ''}${o.grant ? ' grant' : ''}`).join(', ');
+      return `• ${idx+1}: ${factions[inf.faction].short} infra — P${inf.population} V${inf.vulnerability}${orgs ? ` • ${orgs}` : ''}${inf.coalition ? ` • ${inf.coalition}` : ''}`;
+    }).join('<br>');
+    return `<div class="panel" style="font-size:13px"><div style="font-weight:700;margin-bottom:6px">District ${d}</div>${infraText}<div class="small" style="margin-top:6px">Unhoused: P${info.unhoused.population || 0} / V${info.unhoused.vulnerability || 0}</div></div>`;
+  }).join('');
+  return `<div class="panel"><div class="row" style="margin-bottom:10px"><div><div style="font-weight:700">${bs.label}</div><div class="small">Deck ${bs.deck} • round ${state.roundTracker.round}</div></div><span class="badge">Loaded</span></div><div class="small" style="margin-bottom:10px">Resources — PUB ${bs.resources.public}, COM ${bs.resources.community}, PRI ${bs.resources.private} • Losses ${bs.losses} • Tax ${bs.taxRate} • Corrections ${bs.corrections}</div><div class="small" style="margin-bottom:10px">Faction area — PUB loans ${bs.factionArea.public.loans}, COM loans ${bs.factionArea.community.loans}, PRI loans ${bs.factionArea.private.loans}</div><div class="grid2" style="margin-bottom:10px">${btn('Reload 1940', "loadBoardSetupPreset('1940')")}${btn('Reload 1950', "loadBoardSetupPreset('1950')")}</div><div class="grid2">${districtRows}</div></div>`;
+}
+
+function eventCardIsCritical(preset){
+  if(!preset) return false;
+  return preset.steps.some(step => {
+    if(step.kind === 'infrastructure') return true;
+    if(step.kind === 'organization') return true;
+    return false;
+  });
+}
+function ensureEventProtocolR7(){
+  ensureEventProtocolV3();
+  state.eventProtocol.currentStep = Number.isInteger(state.eventProtocol.currentStep) ? state.eventProtocol.currentStep : 0;
+}
+const __oldChooseEventCardPreset_r7 = chooseEventCardPreset;
+chooseEventCardPreset = function(key){ __oldChooseEventCardPreset_r7(key); ensureEventProtocolR7(); state.eventProtocol.currentStep = 0; render(); };
+const __oldOpenEventProtocol_r7 = openEventProtocol;
+openEventProtocol = function(fromResolver=false){ __oldOpenEventProtocol_r7(fromResolver); ensureEventProtocolR7(); if(state.boardState && state.boardState.deck) state.eventProtocol.decade = state.boardState.deck; state.eventProtocol.currentStep = 0; render(); };
+const __oldSetEventDecade_r7 = setEventDecade;
+setEventDecade = function(v){ __oldSetEventDecade_r7(v); ensureEventProtocolR7(); state.eventProtocol.currentStep = 0; render(); };
+function nextCriticalEventStep(){ ensureEventProtocolR7(); const preset = getEventPreset(); if(!preset) return; if(state.eventProtocol.currentStep < preset.steps.length - 1){ state.eventProtocol.currentStep += 1; render(); return; } finishEventProtocol(); }
+function prevCriticalEventStep(){ ensureEventProtocolR7(); if(state.eventProtocol.currentStep > 0){ state.eventProtocol.currentStep -= 1; render(); } else { state.screen = 'mode'; render(); } }
+
+const __oldStartModeResolution_r7 = startModeResolution;
+startModeResolution = function(){
+  if(state.mode === 'event' && state.roundTracker && state.roundTracker.critical !== true){
+    state.result = { status:'resolved', title:'EVENT not available', body:'NP only chooses EVENT when the current card is critical.', trace:['Critical-event check is not marked true.', 'Choose ACT, REACT, or PLAN instead.'] };
+    state.screen = 'result';
+    render();
+    return;
+  }
+  __oldStartModeResolution_r7();
+};
+
+const __renderBeforeR7 = render;
+render = function(){
+  const app = document.getElementById('app');
+  ensureBoardState();
+  if(state.screen === 'dashboard'){
+    const criticalLabel = state.roundTracker.critical === null ? 'Unchecked' : (state.roundTracker.critical ? 'Critical' : 'Not critical');
+    app.innerHTML = `
+      <div class="card">
+        <div class="row" style="margin-bottom:12px;align-items:flex-start">
+          <div><div class="small">Round controls</div><div style="font-size:22px;font-weight:800">Round ${state.roundTracker.round} / ${state.roundTracker.max}</div></div>
+          <span class="badge">${esc(criticalLabel)}</span>
+        </div>
+        <div class="panel" style="margin-bottom:12px"><div><b>Current round event:</b> ${esc(criticalLabel)}</div><div class="muted" style="margin-top:6px">If critical, NP EVENT opens the step-by-step critical event wizard.</div></div>
+        <div class="grid2">${btn(state.roundTracker.critical === null ? 'Round start: critical event?' : 'Edit round critical check', "state.screen='round_gate'; render()", 'primary')}${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8 → Census' : `End round ${state.roundTracker.round} → next round`, 'advanceRound()')}</div>
+      </div>
+      ${boardStateSummaryHtml()}
+      <div class="card"><div class="small">You are playing</div><div class="row"><div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div>${pill(factions[state.playerFaction].short, state.playerFaction)}</div></div>
+      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
+      <div class="card"><div class="row" style="margin-bottom:12px"><div><div style="font-size:18px;font-weight:700">Assisted state log</div><div class="muted">Record what actually changed on the board.</div></div><span class="badge">${state.actionLog.length}</span></div><div class="grid2" style="margin-bottom:12px">${btn('Log completed action','openActionLogger()','primary')}${btn('Save / load state',"state.screen='save_load'; render()")}</div>${state.actionLog.length ? state.actionLog.slice(0,5).map(item=>`<div class="panel" style="margin-top:8px"><div style="font-weight:700">${esc(item.title || `${(item.faction||'').toUpperCase()} ${item.mode}`)}</div><div class="small">${esc(item.body || '')}</div></div>`).join('') : '<div class="muted">No actions logged yet.</div>'}</div>`;
+    return;
+  }
+  if(state.screen === 'mode'){
+    const c=currentCard();
+    const criticalOnly = state.roundTracker && state.roundTracker.critical === true;
+    const modeOptions = criticalOnly ? [['act','Act'],['react','React'],['plan','Plan'],['event','Event']] : [['act','Act'],['react','React'],['plan','Plan']];
+    if(!criticalOnly && state.mode === 'event') state.mode = 'act';
+    const helperNote = state.mode==='event' ? 'Critical event selected. This will open the step-by-step critical event wizard.' : 'Resolve the selected NP action.';
+    app.innerHTML=`<div class="card"><div class="small">Resolving ${factions[state.selectedFaction].label} NP</div><div class="titleblue">${c.name}</div><div class="objblue" style="margin-bottom:14px">Objective: ${c.objective}</div><div class="small" style="margin-bottom:8px">Resolution mode</div><div class="grid2" style="margin-bottom:14px">${modeOptions.map(([v,l])=>btn(l,`state.mode='${v}'; render()`, state.mode===v ? 'primary':'')).join('')}</div><div class="panel" style="margin-bottom:14px">${helperNote}${criticalOnly ? '<div style="margin-top:8px">EVENT is only available because this round is marked critical.</div>' : '<div style="margin-top:8px">EVENT is hidden because this round is not critical.</div>'}</div>${btn(state.mode==='event' ? 'Open critical EVENT wizard' : `Resolve ${state.mode}`,'startModeResolution()','primary')}</div>`;
+    return;
+  }
+  if(state.screen === 'event_protocol' && state.eventProtocol && state.eventProtocol.fromResolver && state.roundTracker && state.roundTracker.critical === true){
+    ensureEventProtocolR7();
+    const ep = state.eventProtocol;
+    const preset = getEventPreset();
+    const cardButtons = ['1940s','1950s'].includes(ep.decade)
+      ? Object.entries(EVENT_DECKS[ep.decade] || {}).filter(([,card])=>eventCardIsCritical(card)).map(([key, card])=>`<button class="btn ${ep.cardKey===key?'selected':''}" onclick="chooseEventCardPreset('${key}')"><div style="font-weight:700">${key} • ${esc(card.title)}</div><div class="small">${card.year}</div></button>`).join('')
+      : '';
+    if(!preset){
+      app.innerHTML = `<div class="card"><div class="small">Critical EVENT wizard • ${factions[ep.faction || state.selectedFaction || state.playerFaction].label}</div><div style="font-size:22px;font-weight:800;margin-bottom:12px">Choose critical event card</div><div class="panel" style="margin-bottom:14px">Only cards marked critical are shown here. Once you choose one, the wizard walks step by step through each effect like the NP resolver.</div><div class="grid2" style="margin-bottom:14px">${btn('1940s critical cards', "setEventDecade('1940s')", ep.decade==='1940s' ? 'primary' : '')}${btn('1950s critical cards', "setEventDecade('1950s')", ep.decade==='1950s' ? 'primary' : '')}</div><div class="grid2" style="margin-bottom:14px">${cardButtons || '<div class="muted">No critical cards loaded for this deck.</div>'}</div>${btn('Back to mode selection', "state.screen='mode'; render()")}</div>`;
+      return;
+    }
+    const idx = Math.max(0, Math.min(ep.currentStep || 0, preset.steps.length - 1));
+    const step = preset.steps[idx];
+    const key = String(idx);
+    const resolver = getResolverForStep(idx, step);
+    const stepChanges = (ep.stepChanges||{})[key] || {population:false,vulnerability:false,organization:false,infrastructure:false,markers:false,resources:false};
+    const showDistricts = resolver.targetStrategy !== 'special';
+    app.innerHTML = `<div class="card"><div class="small">Critical EVENT wizard • step ${idx+1} of ${preset.steps.length}</div><div style="font-size:22px;font-weight:800;margin-bottom:8px">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small" style="margin-bottom:14px">${preset.year} • Order ${preset.order.map(f=>factions[f].short).join(' → ')}</div><div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Current effect</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${esc(step.text)}</div>${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div><div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div style="font-weight:700">Resolver</div><span class="badge">${esc(resolver.label)}</span></div><div class="grid2">${Object.values(EVENT_EFFECT_RESOLVERS).map(r=>btn(r.label, `setEventStepResolver(${idx}, '${r.id}')`, resolver.id===r.id ? 'primary' : '')).join('')}</div>${showDistricts ? `<div class="small" style="margin-top:12px">Affected district(s)</div><div class="grid4" style="margin-top:8px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[key]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : `<div class="panel" style="margin-top:12px">This step does not need normal district picks.</div>`}<div class="small" style="margin-top:12px">Board changes for this step</div><div class="grid2" style="margin-top:8px">${[['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers'],['resources','Resources']].map(([ck,cl])=>btn(cl, `toggleEventStepChange(${idx}, '${ck}')`, stepChanges[ck] ? 'primary' : '')).join('')}</div><div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}</div><textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:90px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea></div><div class="grid2">${btn(idx === 0 ? 'Back to card picker' : 'Previous step', 'prevCriticalEventStep()')}${btn(idx === preset.steps.length - 1 ? 'Finish critical event' : 'Next step', 'nextCriticalEventStep()', 'primary')}</div></div>`;
+    return;
+  }
+  __renderBeforeR7();
+};
+window.loadBoardSetupPreset = loadBoardSetupPreset;
+window.nextCriticalEventStep = nextCriticalEventStep;
+window.prevCriticalEventStep = prevCriticalEventStep;
+window.chooseEventCardPreset = chooseEventCardPreset;
+window.openEventProtocol = openEventProtocol;
+window.setEventDecade = setEventDecade;
+window.startModeResolution = startModeResolution;
+window.render = render;
