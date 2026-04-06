@@ -63,7 +63,7 @@ function answerGate(answer){ const row=currentRow(), gate=currentGate(); if(!row
 function answerPriority(answer){ const row=currentRow(), pr=currentPriority(), bullet=currentPriorityBullet(); if(!row||!pr||!bullet) return; if(answer==="not_sure"){ state.showHint=true; render(); return; } if(answer==="yes"){ pushResolverSnapshot(); state.stage="district"; state.districtChoice=null; state.showHint=false; render(); return; } if(state.priorityStep >= pr.bullets.length-1){ state.result={status:"resolved", title:`${row.action} needs manual tie-break`, body:"The priority column was exhausted without reducing the remaining tied districts to one district. Use player selection from remaining spaces, or draw a new Position card if no legal spaces remain.", trace:buildTrace([`${row.action} passed the basic effectiveness gate.`,`Checked priority column: ${pr.title}.`,`No bullet reduced the remaining tied districts to a single district before fallback.`]) }; state.screen="result"; render(); return; } state.priorityStep += 1; state.districtChoice=null; state.showHint=false; render(); }
 function chooseDistrict(d){ state.districtChoice=d; render(); }
 function answerDistrict(answer){ const row=currentRow(), pr=currentPriority(), bullet=currentPriorityBullet(); if(!row||!pr||!bullet) return; if(answer==="not_sure"){ state.showHint=true; render(); return; } pushResolverSnapshot(); if(answer==="still_tied"||answer==="none"){ if(state.priorityStep >= pr.bullets.length-1){ state.result={status:"resolved", title:`${row.action} needs manual tie-break`, body:"No unique district was produced after the final priority bullet. Use player selection from remaining spaces, or draw a new Position card if no legal spaces remain.", trace:buildTrace([`${row.action} passed the basic effectiveness gate.`,`Checked priority column: ${pr.title}.`,`Bullet '${bullet}' did not reduce the remaining tied districts to a unique district.`])}; state.screen="result"; render(); return; } state.priorityStep += 1; state.stage="priority"; state.districtChoice=null; state.showHint=false; render(); return; } const nextTargets=[...state.selectedTargets, answer]; const targetLimit=currentTargetLimit(); const trace=buildTrace([`${row.action} passed the basic effectiveness gate.`,`Checked priority column: ${pr.title}.`,`Bullet '${bullet}' reduced the remaining tied districts to District ${answer}.`,`Selected Row ${row.index}: ${row.action} — ${row.instruction}.`,`District ${answer} is target ${nextTargets.length}${isMultiTargetMode() ? ` of up to ${targetLimit}` : ""}.`]); if(isMultiTargetMode() && nextTargets.length < targetLimit){ state.selectedTargets=nextTargets; state.history=[...state.history, {rowIndex:state.rowIndex, stage:"district", reason:`Target ${nextTargets.length} selected: District ${answer}.`}]; state.result={status:"continue", title:`${row.action} • Target ${nextTargets.length} locked`, body:`District ${answer} was selected. You can resolve another district for this same ${row.action} action, up to ${targetLimit} total.`, trace}; state.screen="result"; render(); return; } state.selectedTargets=nextTargets; state.result={status:"resolved", title:`${row.action} selected${nextTargets.length>1 ? ` • ${nextTargets.length} targets` : ` • District ${answer}`}`, body: nextTargets.length>1 ? `Use the NP Aid priority column '${pr.title}'. Final targets: ${nextTargets.map(d=>`District ${d}`).join(", ")}.` : `Use the NP Aid priority column '${pr.title}'. The first bullet that reduced the remaining tied districts to one district was '${bullet}', leaving District ${answer}.`, trace}; state.screen="result"; render(); }
-function continueSameAction(){ state.rowIndex=0; state.stage="condition"; state.priorityStep=0; state.districtChoice=null; state.showHint=false; state.showTrace=false; state.result=null; state.screen="resolver"; render(); }
+function continueSameAction(){ state.rowIndex=0; state.stage="condition"; state.priorityStep=0; state.districtChoice=null; state.showHint=false; state.showTrace=false; state.result=null; state.resolverPool=[...DISTRICTS]; state.resolverCandidates=[]; state.screen="resolver"; render(); }
 function finishThisAction(){ state.result={...state.result, status:"resolved", title:`${currentRow()?.action || "Action"} finished`, body:`Final targets: ${state.selectedTargets.map(d=>`District ${d}`).join(", ")}.`, trace: state.result?.trace || []}; render(); }
 function handleDiscardReplacement(){ if(!state.selectedFaction) return; state.npCards[state.selectedFaction]=null; resetResolverState(); state.screen="setup_np_card"; render(); }
 function currentHint(){ if(state.stage==="condition") return currentQuestion()?.hint || ""; if(state.stage==="gate") return currentGate()?.hint || ""; if(state.stage==="priority") return "Apply this bullet only to the same remaining tied districts. If it does not reduce the tie, continue to the next bullet."; return "Pick the district that remains after applying this bullet to the currently tied districts. If more than one still qualifies, choose 'Still tied'."; }
@@ -613,8 +613,8 @@ startModeResolution = function(){
 const originalAnswerGate_v2 = answerGate;
 answerGate = function(answer){
   if(answer === 'yes'){
-    state.resolverPool = [...(state.resolverCandidates || DISTRICTS)];
-    state.resolverCandidates = [...state.resolverPool];
+    state.resolverPool = [...DISTRICTS];
+    state.resolverCandidates = [];
   }
   originalAnswerGate_v2(answer);
 };
@@ -678,29 +678,10 @@ answerPriority = function(answer){
 
 function applyPriorityDistricts(){
   const row = currentRow(), pr = currentPriority(), bullet = currentPriorityBullet();
-  const pool = [...(state.resolverPool || state.resolverCandidates || [])];
-  const survivors = [...(state.resolverCandidates || [])];
+  const currentPool = Array.isArray(state.resolverPool) && state.resolverPool.length ? [...state.resolverPool] : [...DISTRICTS];
+  const selected = Array.isArray(state.resolverCandidates) ? [...state.resolverCandidates] : [];
+  const survivors = selected.length ? selected : currentPool;
   if(!row || !pr || !bullet) return;
-  if(survivors.length === 0){
-    if(state.priorityStep >= pr.bullets.length - 1){
-      state.result = {
-        status: 'resolved',
-        title: `${row.action} needs manual tie-break`,
-        body: 'No matching district was confirmed on the final priority bullet. Use player choice among legal districts, or draw a new Position card if no legal spaces remain.',
-        trace: buildTrace([`${row.action} passed the basic effectiveness gate.`, `Checked priority column: ${pr.title}.`, `Final bullet '${bullet}' produced no matching districts.`])
-      };
-      state.screen = 'result';
-      render();
-      return;
-    }
-    state.history = [...state.history, { rowIndex: state.rowIndex, stage: 'priority', reason: `Bullet '${bullet}' matched no districts. Continue to the next bullet with the same candidate pool.` }];
-    state.priorityStep += 1;
-    state.resolverPool = [...pool];
-    state.resolverCandidates = [];
-    state.showHint = false;
-    render();
-    return;
-  }
   if(survivors.length === 1){
     answerDistrict(survivors[0]);
     return;
@@ -709,14 +690,28 @@ function applyPriorityDistricts(){
     state.result = {
       status: 'resolved',
       title: `${row.action} needs manual tie-break`,
-      body: `The final priority bullet still left multiple districts tied: ${survivors.map(d => `District ${d}`).join(', ')}. Use player choice among the tied districts.`,
-      trace: buildTrace([`${row.action} passed the basic effectiveness gate.`, `Checked priority column: ${pr.title}.`, `Final bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')} but did not produce a single winner.`])
+      body: survivors.length
+        ? `The final priority bullet still left multiple districts tied: ${survivors.map(d => `District ${d}`).join(', ')}. Use player choice among the tied districts.`
+        : 'No matching district was confirmed on the final priority bullet. Use player choice among legal districts, or draw a new Position card if no legal spaces remain.',
+      trace: buildTrace([
+        `${row.action} passed the basic effectiveness gate.`,
+        `Checked priority column: ${pr.title}.`,
+        survivors.length
+          ? `Final bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')} but did not produce a single winner.`
+          : `Final bullet '${bullet}' produced no matching districts.`
+      ])
     };
     state.screen = 'result';
     render();
     return;
   }
-  state.history = [...state.history, { rowIndex: state.rowIndex, stage: 'priority', reason: `Bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')}.` }];
+  state.history = [...state.history, {
+    rowIndex: state.rowIndex,
+    stage: 'priority',
+    reason: survivors.length === currentPool.length && selected.length === 0
+      ? `Bullet '${bullet}' produced no narrower match. Continue to the next bullet with the same candidate pool.`
+      : `Bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')}.`
+  }];
   state.priorityStep += 1;
   state.resolverPool = [...survivors];
   state.resolverCandidates = [];
@@ -902,9 +897,9 @@ function finishCensusCycle(){
   render();
 }
 function toggleResolverCandidate(d){
-  const pool = state.resolverPool || state.resolverCandidates || DISTRICTS;
+  const pool = Array.isArray(state.resolverPool) && state.resolverPool.length ? state.resolverPool : DISTRICTS;
   if(!pool.includes(d)) return;
-  const set = new Set(state.resolverCandidates || pool);
+  const set = new Set(Array.isArray(state.resolverCandidates) ? state.resolverCandidates : []);
   if(set.has(d)) set.delete(d); else set.add(d);
   state.resolverCandidates = pool.filter(x => set.has(x));
   render();
@@ -1074,7 +1069,7 @@ render = function(){
     let actionArea='';
     if(state.stage==='condition') actionArea=`<div class="grid">${btn('Yes',"answerCondition('yes')",'primary')}${btn('No',"answerCondition('no')")}${btn('Not sure',"answerCondition('not_sure')",'secondary')}</div>`;
     else if(state.stage==='gate') actionArea=`<div class="grid">${btn('Yes',"answerGate('yes')",'primary')}${btn('No',"answerGate('no')")}${btn('Not sure',"answerGate('not_sure')",'secondary')}</div>`;
-    else if(state.stage==='priority') actionArea=`<div class="panel" style="padding:14px"><div class="bullet-priority-label">Priority bullet</div><div id="bullet-priority" class="bullet-priority">${esc(b)}</div><div class="bullet-priority-note">Select the districts that match this bullet from the remaining candidates. One survivor wins. Several survivors stay tied and move to the next bullet.</div></div><div class="small" style="margin:8px 0">Remaining candidates: ${((state.resolverPool||DISTRICTS)).map(d => `D${d}`).join(', ') || 'none'}</div><div class="grid4">${(state.resolverPool||DISTRICTS).map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div><div class="grid2">${btn((state.resolverCandidates||[]).length ? `Use ${(state.resolverCandidates||[]).length} selected as matches` : 'No matches on this bullet','applyPriorityDistricts()','primary')}${btn('Clear selections','resetResolverCandidates()')}</div><div class="grid2">${btn('Need hint',"answerPriority('not_sure')",'secondary')}</div>`;
+    else if(state.stage==='priority') actionArea=`<div class="panel" style="padding:14px"><div class="bullet-priority-label">Priority bullet</div><div id="bullet-priority" class="bullet-priority">${esc(b)}</div><div class="bullet-priority-note">Select the districts that match this bullet from the remaining candidates. One district left = winner. Several districts left = stay tied and move to the next bullet.</div></div><div class="small" style="margin:8px 0">Remaining candidates: ${((state.resolverPool||DISTRICTS)).map(d => `D${d}`).join(', ') || 'none'}</div><div class="grid4">${(state.resolverPool||DISTRICTS).map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div><div class="grid2">${btn((state.resolverCandidates||[]).length ? `Use ${(state.resolverCandidates||[]).length} selected as matches` : 'No matches on this bullet','applyPriorityDistricts()','primary')}${btn('Clear selections','resetResolverCandidates()')}</div><div class="grid2">${btn('Need hint',"answerPriority('not_sure')",'secondary')}</div>`;
     else actionArea=`
       <div class="panel"><div style="font-weight:700;margin-bottom:8px">Mark the surviving districts for this bullet</div><div class="muted">One survivor = winner. Several survivors = stay tied and move to the next bullet. Zero survivors = no district.</div></div>
       <div class="grid4">${DISTRICTS.map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div>
