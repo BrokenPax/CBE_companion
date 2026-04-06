@@ -981,9 +981,6 @@ render = function(){
   }
 
   if(state.screen === 'log_action'){
-    state.screen = 'dashboard';
-    render();
-    return;
     const changes = [['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers / coalitions / loans / grants'],['resources','Resources / debt / tax']];
     app.innerHTML = `
       <div class="card">
@@ -2187,7 +2184,8 @@ render = function(){
         <div class="grid2">${btn(state.roundTracker.critical === null ? 'Round start: critical event?' : 'Edit round critical check', "state.screen='round_gate'; render()", 'primary')}${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8 → Census' : `End round ${state.roundTracker.round} → next round`, 'advanceRound()')}</div>
       </div>
       <div class="card"><div class="small">You are playing</div><div class="row"><div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div>${pill(factions[state.playerFaction].short, state.playerFaction)}</div></div>
-      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}`;
+      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
+      <div class="card"><div class="row" style="margin-bottom:12px"><div><div style="font-size:18px;font-weight:700">Assisted state log</div><div class="muted">Record what actually changed on the board.</div></div><span class="badge">${state.actionLog.length}</span></div><div class="grid2" style="margin-bottom:12px">${btn('Log completed action','openActionLogger()','primary')}${btn('Save / load state',"state.screen='save_load'; render()")}</div>${state.actionLog.length ? state.actionLog.slice(0,5).map(item=>`<div class="panel" style="margin-top:8px"><div style="font-weight:700">${esc(item.title || `${(item.faction||'').toUpperCase()} ${item.mode}`)}</div><div class="small">${esc(item.body || '')}</div></div>`).join('') : '<div class="muted">No actions logged yet.</div>'}</div>`;
     return;
   }
   if(state.screen === 'event_protocol' && state.eventProtocol && state.eventProtocol.fromResolver && state.roundTracker && state.roundTracker.critical === true){
