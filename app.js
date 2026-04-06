@@ -456,7 +456,7 @@ render = function(){
   if(state.screen === "plan_helper"){
     const c = currentCard();
     const bullet = currentPlanBullet();
-    const hint = state.showHint ? `<div class="hint">Use the <b>Place / Replace / Refresh Organization</b> priority column. You can also jump to the district helper for a more visual elimination pass.</div>` : "";
+    const hint = state.showHint ? `<div class="hint">Use the <b>Place / Replace / Refresh Organization</b> priority column and move to the next bullet only when the current one does not break the tie.</div>` : "";
     let refreshArea = "";
 
     if(state.planStep === "intro"){
@@ -468,8 +468,7 @@ render = function(){
           <div>3. Record the next main action for next round.</div>
         </div>
         ${gridButtons([
-          helperBtn("Run refresh protocol", "state.planStep='priority'; state.showHint=false; render()", "primary"),
-          helperBtn("Open district helper", "openDistrictHelper('place_replace_refresh_organization','target')")
+          helperBtn("Run refresh protocol", "state.planStep='priority'; state.showHint=false; render()", "primary")
         ])}`;
     } else if(state.planStep === "priority"){
       refreshArea = `
@@ -483,7 +482,6 @@ render = function(){
           ${helperBtn("Yes", "answerPlanPriority('yes')", "primary")}
           ${helperBtn("No", "answerPlanPriority('no')")}
           ${helperBtn(state.showHint ? "Hide hint" : "Need help?", "state.showHint=!state.showHint; render()", "ghost")}
-          ${helperBtn("Use district helper", "openDistrictHelper('place_replace_refresh_organization','target')")}
         </div>
         ${hint}`;
     } else if(state.planStep === "district"){
@@ -499,7 +497,6 @@ render = function(){
           ${helperBtn(`Confirm District ${state.planDistrictChoice || "?"}`, state.planDistrictChoice ? `answerPlanDistrict('${state.planDistrictChoice}')` : "void(0)", state.planDistrictChoice ? "primary" : "")}
           ${helperBtn("Still tied", "answerPlanDistrict('still_tied')")}
           ${helperBtn("No district", "answerPlanDistrict('none')")}
-          ${helperBtn("Use district helper", "openDistrictHelper('place_replace_refresh_organization','target')")}
         </div>`;
     } else {
       const refreshSummary = state.planRefreshDistrict ? `Refresh Organization in <b>District ${state.planRefreshDistrict}</b>, if possible.` : `No legal Organization refresh was identified.`;
@@ -578,7 +575,7 @@ Object.assign(state, {
     housing: 'ask',
     notes: ''
   },
-  resolverCandidates: state.resolverCandidates || [...DISTRICTS],
+  resolverCandidates: Array.isArray(state.resolverCandidates) ? state.resolverCandidates : [],
   resolverPool: state.resolverPool || [...DISTRICTS]
 });
 
@@ -586,7 +583,7 @@ const originalStartResolver_v2 = startResolver;
 startResolver = function(f){
   state.selectedFaction = f;
   resetResolverState();
-  state.resolverCandidates = [...DISTRICTS];
+  state.resolverCandidates = [];
   state.resolverPool = [...DISTRICTS];
   if(state.roundTracker && state.roundTracker.critical === null){
     state.roundTracker.pendingScreen = 'mode';
@@ -664,7 +661,7 @@ resetAll = function(){
       housing: 'ask',
       notes: ''
     },
-    resolverCandidates: [...DISTRICTS],
+    resolverCandidates: [],
     resolverPool: [...DISTRICTS]
   });
   render();
@@ -699,7 +696,7 @@ function applyPriorityDistricts(){
     state.history = [...state.history, { rowIndex: state.rowIndex, stage: 'priority', reason: `Bullet '${bullet}' matched no districts. Continue to the next bullet with the same candidate pool.` }];
     state.priorityStep += 1;
     state.resolverPool = [...pool];
-    state.resolverCandidates = [...pool];
+    state.resolverCandidates = [];
     state.showHint = false;
     render();
     return;
@@ -722,7 +719,7 @@ function applyPriorityDistricts(){
   state.history = [...state.history, { rowIndex: state.rowIndex, stage: 'priority', reason: `Bullet '${bullet}' narrowed the field to ${survivors.map(d => `District ${d}`).join(', ')}.` }];
   state.priorityStep += 1;
   state.resolverPool = [...survivors];
-  state.resolverCandidates = [...survivors];
+  state.resolverCandidates = [];
   state.showHint = false;
   render();
 }
@@ -912,7 +909,7 @@ function toggleResolverCandidate(d){
   state.resolverCandidates = pool.filter(x => set.has(x));
   render();
 }
-function resetResolverCandidates(){ state.resolverCandidates = [...(state.resolverPool || DISTRICTS)]; render(); }
+function resetResolverCandidates(){ state.resolverCandidates = []; render(); }
 function confirmResolverCandidates(){
   const left = state.resolverCandidates || [];
   if(left.length === 1){ answerDistrict(left[0]); return; }
@@ -930,7 +927,6 @@ render = function(){
 
   if(state.screen === 'dashboard'){
     const criticalLabel = state.roundTracker.critical === null ? 'Unchecked' : (state.roundTracker.critical ? 'Critical' : 'Not critical');
-    const recentLog = (state.actionLog || []).slice(-5).reverse();
     app.innerHTML = `
       <div class="card">
         <div class="row" style="margin-bottom:12px;align-items:center">
@@ -958,16 +954,8 @@ render = function(){
           </div>
           ${pill(factions[state.playerFaction].short,state.playerFaction)}
         </div>
-        <div class="grid2">
-          ${btn('Log completed action', "openActionLogger()")}
-          ${btn('Save / load state', "state.screen='save_load'; render()")}
-        </div>
       </div>
-      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
-      <div class="card">
-        <div style="font-weight:700;margin-bottom:8px">Recent assisted state log</div>
-        ${recentLog.length ? recentLog.map(item=>`<div class="trace" style="margin-top:8px">${esc(actionLogSummary(item))}</div>`).join('') : '<div class="muted">No actions logged yet.</div>'}
-      </div>`;
+      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}`;
     return;
   }
 
@@ -993,6 +981,9 @@ render = function(){
   }
 
   if(state.screen === 'log_action'){
+    state.screen = 'dashboard';
+    render();
+    return;
     const changes = [['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers / coalitions / loans / grants'],['resources','Resources / debt / tax']];
     app.innerHTML = `
       <div class="card">
@@ -1086,7 +1077,7 @@ render = function(){
     let actionArea='';
     if(state.stage==='condition') actionArea=`<div class="grid">${btn('Yes',"answerCondition('yes')",'primary')}${btn('No',"answerCondition('no')")}${btn('Not sure',"answerCondition('not_sure')",'secondary')}</div>`;
     else if(state.stage==='gate') actionArea=`<div class="grid">${btn('Yes',"answerGate('yes')",'primary')}${btn('No',"answerGate('no')")}${btn('Not sure',"answerGate('not_sure')",'secondary')}</div>`;
-    else if(state.stage==='priority') actionArea=`<div class="panel" style="padding:14px"><div class="bullet-priority-label">Priority bullet</div><div id="bullet-priority" class="bullet-priority">${esc(b)}</div><div class="bullet-priority-note">Select every current candidate district that matches this bullet. One survivor wins. Several survivors stay tied and move to the next bullet.</div></div><div class="grid4">${(state.resolverPool||state.resolverCandidates||[]).map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div><div class="grid2">${btn('Apply this bullet','applyPriorityDistricts()','primary')}${btn('Reset candidates','resetResolverCandidates()')}</div><div class="grid2">${btn('No matches this bullet','state.resolverCandidates=[]; applyPriorityDistricts()')}${btn('Need hint',"answerPriority('not_sure')",'secondary')}</div>`;
+    else if(state.stage==='priority') actionArea=`<div class="panel" style="padding:14px"><div class="bullet-priority-label">Priority bullet</div><div id="bullet-priority" class="bullet-priority">${esc(b)}</div><div class="bullet-priority-note">Select the districts that match this bullet from the remaining candidates. One survivor wins. Several survivors stay tied and move to the next bullet.</div></div><div class="small" style="margin:8px 0">Remaining candidates: ${((state.resolverPool||DISTRICTS)).map(d => `D${d}`).join(', ') || 'none'}</div><div class="grid4">${(state.resolverPool||DISTRICTS).map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div><div class="grid2">${btn((state.resolverCandidates||[]).length ? `Use ${(state.resolverCandidates||[]).length} selected as matches` : 'No matches on this bullet','applyPriorityDistricts()','primary')}${btn('Clear selections','resetResolverCandidates()')}</div><div class="grid2">${btn('Need hint',"answerPriority('not_sure')",'secondary')}</div>`;
     else actionArea=`
       <div class="panel"><div style="font-weight:700;margin-bottom:8px">Mark the surviving districts for this bullet</div><div class="muted">One survivor = winner. Several survivors = stay tied and move to the next bullet. Zero survivors = no district.</div></div>
       <div class="grid4">${DISTRICTS.map(d=>`<button class="btn ${(state.resolverCandidates||[]).includes(d)?'selected':''}" onclick="toggleResolverCandidate('${d}')">${d}</button>`).join('')}</div>
@@ -1105,8 +1096,8 @@ render = function(){
     const iconClass=r.status==='resolved'?'iconbox ok':r.status==='continue'?'iconbox cont':'iconbox warn';
     let extra='';
     if(r.status==='discard') extra = btn('Draw replacement card','handleDiscardReplacement()');
-    else if(r.status==='continue') extra = btn('Resolve another district','continueSameAction()') + btn('Finish this action','finishThisAction()') + btn('Log this NP action','prefillLogFromCurrentResult()');
-    else extra = btn('Resolve this NP again',`startResolver('${state.selectedFaction}')`) + btn('Log this action','prefillLogFromCurrentResult()');
+    else if(r.status==='continue') extra = btn('Resolve another district','continueSameAction()') + btn('Finish this action','finishThisAction()');
+    else extra = btn('Resolve this NP again',`startResolver('${state.selectedFaction}')`);
     app.innerHTML=`<div class="card ${resultClass}"><div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px"><div class="${iconClass}">${r.status==='discard'?'!':'✓'}</div><div><div style="font-size:22px;font-weight:700">${esc(r.title)}</div><div class="muted" style="margin-top:4px">${esc(r.body)}</div></div></div><div class="grid">${btn('Return to dashboard',"state.screen='dashboard'; render()",'primary')}${extra}</div></div><div class="card"><div style="font-weight:700;margin-bottom:8px">Why it did that</div>${(r.trace && r.trace.length?r.trace:['No rules trace was captured for this result.']).map(line=>`<div class="trace" style="margin-top:8px">${esc(line)}</div>`).join('')}</div>`;
     return;
   }
@@ -1769,7 +1760,7 @@ render = function(){
             ${btn('1950s deck', "setEventDecade('1950s')", ep.decade==='1950s' ? 'primary' : '')}
             ${btn('Generic manual', "setEventDecade('generic')", ep.decade==='generic' ? 'primary' : '')}
           </div>
-          <div class="small">Each preset step now calls a reusable resolver. You can override any step manually when the card gets weird.</div>
+          
         </div>
         ${['1940s','1950s'].includes(ep.decade) ? `<div class="card" style="padding:14px;margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Choose ${esc(ep.decade)} event card</div><div class="grid2">${cardButtons}</div></div>` : ''}
         ${preset ? `<div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div><div style="font-size:18px;font-weight:700">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small">${preset.year} • Order: ${preset.order.map(f=>factions[f].short).join(' → ')}</div></div><span class="badge">${preset.steps.length} step${preset.steps.length===1?'':'s'}</span></div>${preset.steps.map((step, idx)=>{
@@ -1782,9 +1773,7 @@ render = function(){
               <div class="grid2" style="margin-top:8px">${Object.values(EVENT_EFFECT_RESOLVERS).map(r=>btn(r.label, `setEventStepResolver(${idx}, '${r.id}')`, resolver.id===r.id ? 'primary' : '')).join('')}</div>
               <div class="panel" style="margin-top:10px;background:#f8fafc">${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div>
               ${resolver.targetStrategy !== 'special' ? `<div class="small" style="margin-top:10px">Affected district(s)</div><div class="grid4" style="margin-top:8px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[key]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : ''}
-              <div class="small" style="margin-top:10px">Board changes for this step</div>
-              <div class="grid2" style="margin-top:8px">${[['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers'],['resources','Resources']].map(([ck,cl])=>btn(cl, `toggleEventStepChange(${idx}, '${ck}')`, stepChanges[ck] ? 'primary' : '')).join('')}</div>
-              <div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}</div>
+                            <div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}</div>
               <textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:72px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea>
             </div>`;
           }).join('')}</div>` : ''}
@@ -1976,7 +1965,7 @@ render = function(){
     const resolver = getResolverForStep(idx, step);
     const stepChanges = (ep.stepChanges||{})[key] || {population:false,vulnerability:false,organization:false,infrastructure:false,markers:false,resources:false};
     const showDistricts = resolver.targetStrategy !== 'special';
-    app.innerHTML = `<div class="card"><div class="small">Critical EVENT wizard • step ${idx+1} of ${preset.steps.length}</div><div style="font-size:22px;font-weight:800;margin-bottom:8px">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small" style="margin-bottom:14px">${preset.year} • Order ${preset.order.map(f=>factions[f].short).join(' → ')}</div><div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Current effect</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${esc(step.text)}</div>${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div><div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div style="font-weight:700">Resolver</div><span class="badge">${esc(resolver.label)}</span></div><div class="grid2">${Object.values(EVENT_EFFECT_RESOLVERS).map(r=>btn(r.label, `setEventStepResolver(${idx}, '${r.id}')`, resolver.id===r.id ? 'primary' : '')).join('')}</div>${showDistricts ? `<div class="small" style="margin-top:12px">Affected district(s)</div><div class="grid4" style="margin-top:8px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[key]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : `<div class="panel" style="margin-top:12px">This step does not need normal district picks.</div>`}<div class="small" style="margin-top:12px">Board changes for this step</div><div class="grid2" style="margin-top:8px">${[['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers'],['resources','Resources']].map(([ck,cl])=>btn(cl, `toggleEventStepChange(${idx}, '${ck}')`, stepChanges[ck] ? 'primary' : '')).join('')}</div><div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}</div><textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:90px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea></div><div class="grid2">${btn(idx === 0 ? 'Back to card picker' : 'Previous step', 'prevCriticalEventStep()')}${btn(idx === preset.steps.length - 1 ? 'Finish critical event' : 'Next step', 'nextCriticalEventStep()', 'primary')}</div></div>`;
+    app.innerHTML = `<div class="card"><div class="small">Critical EVENT wizard • step ${idx+1} of ${preset.steps.length}</div><div style="font-size:22px;font-weight:800;margin-bottom:8px">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small" style="margin-bottom:14px">${preset.year} • Order ${preset.order.map(f=>factions[f].short).join(' → ')}</div><div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Current effect</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${esc(step.text)}</div>${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div><div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div style="font-weight:700">Resolver</div><span class="badge">${esc(resolver.label)}</span></div><div class="grid2">${Object.values(EVENT_EFFECT_RESOLVERS).map(r=>btn(r.label, `setEventStepResolver(${idx}, '${r.id}')`, resolver.id===r.id ? 'primary' : '')).join('')}</div>${showDistricts ? `<div class="small" style="margin-top:12px">Affected district(s)</div><div class="grid4" style="margin-top:8px">${DISTRICTS.map(d=>`<button class="btn ${(((ep.stepDistricts||{})[key]||[]).includes(d))?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>` : `<div class="panel" style="margin-top:12px">This step does not need normal district picks.</div>`}<div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}</div><textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:90px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea></div><div class="grid2">${btn(idx === 0 ? 'Back to card picker' : 'Previous step', 'prevCriticalEventStep()')}${btn(idx === preset.steps.length - 1 ? 'Finish critical event' : 'Next step', 'nextCriticalEventStep()', 'primary')}</div></div>`;
     return;
   }
   __renderBeforeR7();
@@ -2187,7 +2176,6 @@ const __oldRender_r8 = render;
 render = function(){
   const app = document.getElementById('app');
   if(state.screen === 'dashboard'){
-    // rebuild dashboard only to replace board summary block
     const criticalLabel = state.roundTracker.critical === null ? 'Unchecked' : (state.roundTracker.critical ? 'Critical' : 'Not critical');
     app.innerHTML = `
       <div class="card">
@@ -2198,10 +2186,8 @@ render = function(){
         <div class="panel" style="margin-bottom:12px"><div><b>Current round event:</b> ${esc(criticalLabel)}</div><div class="muted" style="margin-top:6px">If critical, NP EVENT opens the step-by-step critical event wizard.</div></div>
         <div class="grid2">${btn(state.roundTracker.critical === null ? 'Round start: critical event?' : 'Edit round critical check', "state.screen='round_gate'; render()", 'primary')}${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8 → Census' : `End round ${state.roundTracker.round} → next round`, 'advanceRound()')}</div>
       </div>
-      ${boardStateSummaryHtmlR8()}
       <div class="card"><div class="small">You are playing</div><div class="row"><div style="font-size:22px;font-weight:800">${factions[state.playerFaction].label}</div>${pill(factions[state.playerFaction].short, state.playerFaction)}</div></div>
-      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}
-      <div class="card"><div class="row" style="margin-bottom:12px"><div><div style="font-size:18px;font-weight:700">Assisted state log</div><div class="muted">Record what actually changed on the board.</div></div><span class="badge">${state.actionLog.length}</span></div><div class="grid2" style="margin-bottom:12px">${btn('Log completed action','openActionLogger()','primary')}${btn('Save / load state',"state.screen='save_load'; render()")}</div>${state.actionLog.length ? state.actionLog.slice(0,5).map(item=>`<div class="panel" style="margin-top:8px"><div style="font-weight:700">${esc(item.title || `${(item.faction||'').toUpperCase()} ${item.mode}`)}</div><div class="small">${esc(item.body || '')}</div></div>`).join('') : '<div class="muted">No actions logged yet.</div>'}</div>`;
+      ${npFactions().map(f=>{ const card=cards[f].find(c=>c.id===state.npCards[f]); return `<div class="card"><div class="row" style="margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">${factions[f].label} NP</div><div class="muted">${card ? `${card.name} • ${card.objective}${state.npPlannedActions[f] ? ` • Next: ${state.npPlannedActions[f].toUpperCase()}` : ''}` : 'No Position card selected'}</div></div>${pill(factions[f].short,f)}</div><div class="grid2">${btn('Take NP turn',`startResolver('${f}')`, card ? 'primary':'')}${btn('Change card',`state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div></div>`; }).join('')}`;
     return;
   }
   if(state.screen === 'event_protocol' && state.eventProtocol && state.eventProtocol.fromResolver && state.roundTracker && state.roundTracker.critical === true){
@@ -2234,7 +2220,7 @@ render = function(){
     if(pr.originWinner) summaryBits.push(`Origin D${pr.originWinner}`);
     if(pr.winner && pr.kind !== 'move') summaryBits.push(`Winner D${pr.winner}`);
     const directDistricts = (((ep.stepDistricts||{})[key]||[]));
-    app.innerHTML = `<div class="card"><div class="small">Critical EVENT wizard • step ${idx+1} of ${preset.steps.length}</div><div style="font-size:22px;font-weight:800;margin-bottom:8px">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small" style="margin-bottom:14px">${preset.year} • Order ${preset.order.map(f=>factions[f].short).join(' → ')}</div><div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Current effect</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${esc(step.text)}</div>${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div><div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div style="font-weight:700">Resolver</div><span class="badge">${esc(resolver.label)}</span></div><div class="panel" style="margin-bottom:10px">This effect is fixed by the event card. The wizard now walks the district priority filter the same way the NP action resolver does.</div><div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}${btn('Reset this step priority', `resetEventStepPriority(${idx})`)}</div>${needsPriority ? `<div class="panel" style="margin-top:12px"><div style="font-weight:700">${esc(pr.kind === 'move' ? (pr.phase === 'destination' ? 'Destination district' : 'Origin district') : 'District priority walk')}${summaryBits.length ? ` • ${summaryBits.join(' • ')}` : ''}</div><div class="small" style="margin-top:6px">Column: <b>${esc(priorityColumns[pr.column]?.title || pr.label)}</b></div><div class="small" style="margin-top:6px">${esc(eventPriorityHint(pr))}</div><div class="bullet-priority-label" style="margin-top:10px">Current bullet ${Math.min((pr.bulletIndex||0)+1, bullets.length)} of ${bullets.length}</div><div id="bullet-priority" class="bullet-priority">${esc(currentBullet)}</div><div class="small" style="margin-top:6px">Remaining candidates: ${pool.map(d=>`D${d}`).join(', ') || 'none'}</div><div class="grid4" style="margin-top:10px">${pool.map(d=>`<button class="btn ${selected.includes(d)?'selected':''}" onclick="toggleEventPriorityMatch(${idx}, '${d}')">${d}</button>`).join('')}</div><div class="grid2" style="margin-top:10px">${btn(selected.length ? `Use ${selected.length} selected as matches` : 'No matches on this bullet', `confirmEventPriorityBullet(${idx})`, 'primary')}</div><div class="small" style="margin-top:10px">NP General Principles: move/remove unhoused pieces first; place own pieces first when there is a choice; for movement use Place X for destination and Remove X for origin.</div></div>` : `<div class="panel" style="margin-top:12px">${ep.stepManual[key] ? 'Manual override is on. Pick districts directly and describe the result.' : 'This resolver does not use the NP district priority chart.'}</div><div class="grid4" style="margin-top:10px">${DISTRICTS.map(d=>`<button class="btn ${directDistricts.includes(d)?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>`}<div class="small" style="margin-top:12px">Board changes for this step</div><div class="grid2" style="margin-top:8px">${[['population','Population'],['vulnerability','Vulnerability'],['organization','Organization'],['infrastructure','Infrastructure'],['markers','Markers'],['resources','Resources']].map(([ck,cl])=>btn(cl, `toggleEventStepChange(${idx}, '${ck}')`, stepChanges[ck] ? 'primary' : '')).join('')}</div><textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:90px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea></div><div class="grid2">${btn(idx === 0 ? 'Back to card picker' : 'Previous step', 'prevCriticalEventStep()')}${btn(idx === preset.steps.length - 1 ? 'Finish critical event' : 'Next step', 'nextCriticalEventStep()', 'primary')}</div></div>`;
+    app.innerHTML = `<div class="card"><div class="small">Critical EVENT wizard • step ${idx+1} of ${preset.steps.length}</div><div style="font-size:22px;font-weight:800;margin-bottom:8px">${esc(ep.card || `${ep.cardKey} • ${preset.title}`)}</div><div class="small" style="margin-bottom:14px">${preset.year} • Order ${preset.order.map(f=>factions[f].short).join(' → ')}</div><div class="panel" style="margin-bottom:14px"><div style="font-weight:700;margin-bottom:8px">Current effect</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">${esc(step.text)}</div>${resolver.prompts.map(p=>`<div class="small" style="margin-top:4px">• ${esc(p)}</div>`).join('')}</div><div class="card" style="padding:14px;margin-bottom:14px"><div class="row" style="margin-bottom:8px"><div style="font-weight:700">Resolver</div><span class="badge">${esc(resolver.label)}</span></div><div class="grid2" style="margin-top:10px">${btn((ep.stepManual||{})[key] ? 'Manual override on' : 'Use resolver as written', `toggleEventStepManual(${idx})`, (ep.stepManual||{})[key] ? 'primary' : '')}${btn('Reset this step priority', `resetEventStepPriority(${idx})`)}</div>${needsPriority ? `<div class="panel" style="margin-top:12px"><div style="font-weight:700">${esc(pr.kind === 'move' ? (pr.phase === 'destination' ? 'Destination district' : 'Origin district') : 'District priority walk')}${summaryBits.length ? ` • ${summaryBits.join(' • ')}` : ''}</div><div class="small" style="margin-top:6px">Column: <b>${esc(priorityColumns[pr.column]?.title || pr.label)}</b></div><div class="small" style="margin-top:6px">${esc(eventPriorityHint(pr))}</div><div class="bullet-priority-label" style="margin-top:10px">Current bullet ${Math.min((pr.bulletIndex||0)+1, bullets.length)} of ${bullets.length}</div><div id="bullet-priority" class="bullet-priority">${esc(currentBullet)}</div><div class="small" style="margin-top:6px">Remaining candidates: ${pool.map(d=>`D${d}`).join(', ') || 'none'}</div><div class="grid4" style="margin-top:10px">${pool.map(d=>`<button class="btn ${selected.includes(d)?'selected':''}" onclick="toggleEventPriorityMatch(${idx}, '${d}')">${d}</button>`).join('')}</div><div class="grid2" style="margin-top:10px">${btn(selected.length ? `Use ${selected.length} selected as matches` : 'No matches on this bullet', `confirmEventPriorityBullet(${idx})`, 'primary')}</div><div class="small" style="margin-top:10px">NP General Principles: move/remove unhoused pieces first; place own pieces first when there is a choice; for movement use Place X for destination and Remove X for origin.</div></div>` : `<div class="panel" style="margin-top:12px">${ep.stepManual[key] ? 'Manual override is on. Pick districts directly and describe the result.' : 'This resolver does not use the NP district priority chart.'}</div><div class="grid4" style="margin-top:10px">${DISTRICTS.map(d=>`<button class="btn ${directDistricts.includes(d)?'selected':''}" onclick="toggleEventStepDistrict(${idx}, '${d}')">${d}</button>`).join('')}</div>`}<textarea oninput="updateEventStepNote(${idx}, this.value)" style="width:100%;min-height:90px;border:1px solid #cbd5e1;border-radius:18px;padding:12px;font:inherit;margin-top:10px" placeholder="${esc(resolver.noteHint)}">${esc(((ep.stepNotes||{})[key] || ''))}</textarea></div><div class="grid2">${btn(idx === 0 ? 'Back to card picker' : 'Previous step', 'prevCriticalEventStep()')}${btn(idx === preset.steps.length - 1 ? 'Finish critical event' : 'Next step', 'nextCriticalEventStep()', 'primary')}</div></div>`;
     return;
   }
   __oldRender_r8();
