@@ -2232,7 +2232,7 @@ window.render = render;
 // --- Solo UX pass: friendly mobile flow informed by NP Aid + setup sheets ---
 (function installSoloUxPass(){
   const SOLO_CSS_ID = 'solo-ux-pass-styles';
-  const SOLO_BUILD_LABEL = 'solo build v14';
+  const SOLO_BUILD_LABEL = 'solo build v15';
 
   function injectSoloCss(){
     if(document.getElementById(SOLO_CSS_ID)) return;
@@ -2293,6 +2293,12 @@ window.render = render;
       .aid-list{margin:0;padding-left:18px;color:#334155;font-size:14px;line-height:1.35}
       .compact-card-row{display:flex;gap:10px;align-items:flex-start}
       .mode-grid{display:grid;grid-template-columns:1fr;gap:10px}
+      .card-image{display:block;width:100%;height:auto;border:1px solid #dbe4ee;border-radius:14px;background:#fff;object-fit:contain;box-shadow:0 1px 6px rgba(15,23,42,.08)}
+      .card-image.np-card-image{aspect-ratio:722/512}
+      .card-image.event-card-image{aspect-ratio:512/726;max-height:430px}
+      .card-image.preview{margin-bottom:12px}
+      .card-image.compact{max-height:220px}
+      button .card-image{pointer-events:none}
       .action-claim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
       .action-claim{border:1px solid #cbd5e1;border-radius:14px;padding:12px;background:#fff}
       .action-claim.claimed{background:#eff6ff;border-color:#bfdbfe}
@@ -2345,6 +2351,14 @@ window.render = render;
 
   function safeFactionLabel(f){ return factions[f] ? factions[f].label : 'Not chosen'; }
   function selectedCardFor(f){ return f && state.npCards ? cards[f].find(c => c.id === state.npCards[f]) : null; }
+  function npCardImageHtml(card, extraClass='preview'){
+    if(!card) return '';
+    return `<img class="card-image np-card-image ${extraClass}" src="assets/cards/np/${card.id}.jpg" alt="${esc(card.name)}" loading="lazy">`;
+  }
+  function eventCardImageHtml(key, title, extraClass='preview'){
+    if(!key) return '';
+    return `<img class="card-image event-card-image ${extraClass}" src="assets/cards/events/event_${key}.jpg" alt="${esc(title || `Event ${key}`)}" loading="lazy">`;
+  }
   function ensureTurnTracker(){
     state.roundTracker = state.roundTracker || { round: 1, max: 8, critical: null, checked: false, pendingScreen: null };
     state.roundTracker.turnsTaken = state.roundTracker.turnsTaken || {};
@@ -2641,7 +2655,7 @@ window.render = render;
         ${cards[f].map(card => {
           const isSelected = state.npCards[f] === card.id;
           const rows = card.rows.map(row => `<div class="small"><b>${row.index}.</b> ${esc(row.condition)} -> <b>${esc(row.action)}</b></div>`).join('');
-          return `<button class="btn ${isSelected ? 'primary':''}" onclick="chooseNpcCard('${card.id}')"><div class="row"><div><div style="font-size:18px;font-weight:900">${esc(card.name)}</div><div class="small">${esc(card.objective)} • Goal ${card.goal}</div></div><span class="badge">${isSelected ? 'Selected':'Choose'}</span></div><div style="margin-top:10px;display:grid;gap:4px">${rows}</div></button>`;
+          return `<button class="btn ${isSelected ? 'primary':''}" onclick="chooseNpcCard('${card.id}')">${npCardImageHtml(card)}<div class="row"><div><div style="font-size:18px;font-weight:900">${esc(card.name)}</div><div class="small" style="${isSelected ? 'color:#dbeafe' : ''}">${esc(card.objective)} • Goal ${card.goal}</div></div><span class="badge">${isSelected ? 'Selected':'Choose'}</span></div><div style="margin-top:10px;display:grid;gap:4px">${rows}</div></button>`;
         }).join('')}
       </div>`;
   }
@@ -2666,7 +2680,7 @@ window.render = render;
       <div class="grid">
         ${Object.entries(cardsForDeck).map(([key, card]) => {
           const critical = eventCardIsCritical(card);
-          return `<button class="btn ${selectedKey === key ? 'primary' : ''}" onclick="chooseRoundEventCard('${key}')"><div style="font-size:18px;font-weight:900">${key} • ${esc(card.title)}</div><div class="small" style="${selectedKey === key ? 'color:#dbeafe' : ''}">${card.year} • ${critical ? 'Critical' : 'Normal'} • ${card.order.map(f => factions[f].short).join(' -> ')}</div></button>`;
+          return `<button class="btn ${selectedKey === key ? 'primary' : ''}" onclick="chooseRoundEventCard('${key}')">${eventCardImageHtml(key, card.title)}<div style="font-size:18px;font-weight:900">${key} • ${esc(card.title)}</div><div class="small" style="${selectedKey === key ? 'color:#dbeafe' : ''}">${card.year} • ${critical ? 'Critical' : 'Normal'} • ${card.order.map(f => factions[f].short).join(' -> ')}</div></button>`;
         }).join('')}
       </div>
       <div class="solo-sticky">${btn('Back to dashboard', "state.screen='dashboard'; render()", selectedKey ? 'primary' : '')}</div>`;
@@ -2684,6 +2698,7 @@ window.render = render;
       const planned = state.npPlannedActions && state.npPlannedActions[f] ? ` • Next ${state.npPlannedActions[f].toUpperCase()}` : '';
       const done = factionTurnDone(f);
       return `<div class="solo-action ${done ? 'done':''}">
+        ${card ? npCardImageHtml(card, 'preview compact') : ''}
         <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">${factions[f].label} NP</div><div class="solo-action-title">${card ? esc(card.name) : 'No card selected'}</div><div class="small">${card ? `${esc(card.objective)} • Goal ${card.goal}${planned}` : 'Choose a Position card before this NP turn.'}</div></div><div style="display:grid;gap:6px;justify-items:end">${pill(factions[f].short,f)}${done ? '<span class="solo-chip done">Done this round</span>' : ''}</div></div>
         <div class="grid2">${btn(done ? 'Take again' : 'Take turn', `startResolver('${f}')`, card && !done ? 'primary':'')}${btn(done ? 'Undo done' : 'Mark done', `setFactionTurnDone('${f}', ${done ? 'false' : 'true'})`, done ? '' : 'secondary')}${btn('Card', `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div>
       </div>`;
@@ -2703,6 +2718,7 @@ window.render = render;
       </div>
       <div class="card">
         <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">Event card</div><div class="solo-action-title">${esc(roundEventLabel())}</div><div class="small">${esc(roundEventStatusLabel())}</div></div></div>
+        ${selectedRoundEventPreset() ? eventCardImageHtml(state.roundTracker.eventKey, state.roundTracker.eventTitle || selectedRoundEventPreset().title, 'preview compact') : ''}
         ${turnOrderHtml()}
         <div class="grid2" style="margin-top:12px">${btn(selectedRoundEventPreset() ? 'Change event card' : 'Choose event card', "state.screen='round_event'; render()", selectedRoundEventPreset() ? '' : 'primary')}${btn(state.roundTracker.critical === null ? 'Critical check' : 'Edit critical check', "state.screen='round_gate'; render()", 'secondary')}</div>
       </div>
@@ -2735,6 +2751,7 @@ window.render = render;
         <div class="solo-title">${esc(c ? c.name : 'Choose a card')}</div>
         <div class="solo-sub">${c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This NP needs a Position card before it can act.'}</div>
       </div>
+      ${c ? `<div class="card">${npCardImageHtml(c, 'preview')}</div>` : ''}
       <div class="mode-grid">
         ${choices.map((key, idx) => {
           const claimedBy = actionClaimedBy(key);
