@@ -2232,7 +2232,7 @@ window.render = render;
 // --- Solo UX pass: friendly mobile flow informed by NP Aid + setup sheets ---
 (function installSoloUxPass(){
   const SOLO_CSS_ID = 'solo-ux-pass-styles';
-  const SOLO_BUILD_LABEL = 'solo build v17';
+  const SOLO_BUILD_LABEL = 'solo build v18';
 
   function injectSoloCss(){
     if(document.getElementById(SOLO_CSS_ID)) return;
@@ -2350,8 +2350,26 @@ window.render = render;
     private_broker: ['act','react','plan'],
   };
   const ACTION_LABELS = { act: 'ACT', event: 'EVENT', react: 'REACT', plan: 'PLAN' };
+  const FREE_AGENCY_EFFECTS = [
+    { id:'place_population', label:'Place Population', column:'place_population', check:'Is there a legal place for Population?', hint:'Check legal placement, housing space, and any faction/action restrictions.' },
+    { id:'place_infrastructure', label:'Place / Replace Infrastructure', column:'replace_or_place_infrastructure', check:'Is there a legal Infrastructure placement or replacement?', hint:'Check supply, district capacity, exhausted tiles, and action restrictions.' },
+    { id:'place_organization', label:'Place / Refresh Organization', column:'place_replace_refresh_organization', check:'Is there a legal Organization placement or refresh?', hint:'Check available or inactive Organizations, housing slots, and coalition effects.' },
+    { id:'place_grant_loan', label:'Place Grant / Loan', column:'place_grant_or_loan', check:'Is there a legal Grant or Loan placement?', hint:'Check available markers and eligible Organizations.' },
+    { id:'place_vulnerability', label:'Place Vulnerability', column:'place_vulnerability', check:'Is there a legal place for Vulnerability?', hint:'Check housing space and where the Vulnerability can legally enter.' },
+    { id:'remove_vulnerability', label:'Remove Vulnerability', column:'remove_vulnerability', check:'Is there a legal Vulnerability removal or activation target?', hint:'Check unhoused Vulnerabilities, active/inactive Organizations, and coalition partners.' },
+    { id:'remove_population', label:'Remove Population', column:'remove_population', check:'Is there legal Population to remove?', hint:'Check source districts and any faction/action restrictions.' },
+    { id:'remove_organization', label:'Remove / Activate Organization', column:'remove_or_activate_organization', check:'Is there a legal Organization to remove or activate?', hint:'Check inactive Organizations, active Organizations, and coalition requirements.' },
+    { id:'exhaust_infrastructure', label:'Exhaust Infrastructure', column:'exhaust_infrastructure', check:'Is there legal Infrastructure to exhaust?', hint:'Check eligible Infrastructure and any Population or Vulnerability consequences.' }
+  ];
 
   function safeFactionLabel(f){ return factions[f] ? factions[f].label : 'Not chosen'; }
+  function playerAgencyMode(){ return state.playerAgencyMode || 'free'; }
+  function playerUsesPositionCard(){ return playerAgencyMode() === 'challenge'; }
+  function isFreeAgencyPlayer(f=state.selectedFaction){ return f === state.playerFaction && !playerUsesPositionCard(); }
+  function setupCardFactions(){
+    return Object.keys(factions).filter(f => f !== state.playerFaction || playerUsesPositionCard());
+  }
+  function freeAgencyEffect(id){ return FREE_AGENCY_EFFECTS.find(x => x.id === id) || FREE_AGENCY_EFFECTS[0]; }
   function selectedCardFor(f){ return f && state.npCards ? cards[f].find(c => c.id === state.npCards[f]) : null; }
   function npCardImageHtml(card, extraClass='preview'){
     if(!card) return '';
@@ -2439,6 +2457,7 @@ window.render = render;
     return state.roundTracker.actionClaims;
   }
   function cardActionChoices(f){
+    if(isFreeAgencyPlayer(f)) return ['act','event','react','plan'];
     const card = selectedCardFor(f);
     if(!card) return ['act','event','react','plan'];
     return POSITION_ACTION_CHOICES[card.id] || ['act','event','react','plan'];
@@ -2566,28 +2585,31 @@ window.render = render;
   function setupProgress(){
     const board = !!state.boardState;
     const player = !!state.playerFaction;
-    const npCardsReady = player && Object.keys(factions).every(f => !!state.npCards[f]);
-    return { board, player, npCardsReady };
+    const agency = player && !!playerAgencyMode();
+    const cardsReady = player && setupCardFactions().every(f => !!state.npCards[f]);
+    return { board, player, agency, cardsReady };
   }
   function stepIcon(done){ return `<div class="solo-num ${done ? 'done':'wait'}">${done ? '✓':'-'}</div>`; }
   function setupChecklistHtml(){
     const p = setupProgress();
     return `<div class="solo-stack">
       <div class="solo-step">${stepIcon(p.board)}<div><div style="font-weight:850">Load a setup sheet</div><div class="solo-sub">Use the 1940 or 1950 board setup PDF as the starting board state.</div></div></div>
-      <div class="solo-step">${stepIcon(p.player)}<div><div style="font-weight:850">Choose your faction</div><div class="solo-sub">You still resolve every faction with the automated turn flow.</div></div></div>
-      <div class="solo-step">${stepIcon(p.npCardsReady)}<div><div style="font-weight:850">Choose Position cards</div><div class="solo-sub">Each faction uses its Position card as an automated turn script.</div></div></div>
+      <div class="solo-step">${stepIcon(p.player)}<div><div style="font-weight:850">Choose your faction</div><div class="solo-sub">Pick who you are playing this session.</div></div></div>
+      <div class="solo-step">${stepIcon(p.agency)}<div><div style="font-weight:850">Choose solo agency</div><div class="solo-sub">Free Agency lets you choose any open action; Challenge gives you a Position card too.</div></div></div>
+      <div class="solo-step">${stepIcon(p.cardsReady)}<div><div style="font-weight:850">Choose Position cards</div><div class="solo-sub">${playerUsesPositionCard() ? 'All factions use Position cards.' : 'Only automated NP factions need Position cards.'}</div></div></div>
     </div>`;
   }
   function nextSoloAction(){
     if(!state.boardState) return { label:'Load setup', onclick:"state.screen='setup_decade'; render()", primary:true, note:'Start from the 1940 or 1950 setup sheet.' };
     if(!state.playerFaction) return { label:'Choose player faction', onclick:"state.screen='setup_player'; render()", primary:true, note:'Pick the faction you will play.' };
-    const missing = Object.keys(factions).find(f => !state.npCards[f]);
+    if(!playerAgencyMode()) return { label:'Choose solo agency', onclick:"state.screen='setup_player_mode'; render()", primary:true, note:'Decide whether your faction uses Free Agency or a Position-card challenge.' };
+    const missing = setupCardFactions().find(f => !state.npCards[f]);
     if(missing) return { label:`Choose ${factions[missing].label} card`, onclick:`state.selectedFaction='${missing}'; state.screen='setup_np_card'; render()`, primary:true, note:'Finish the Position card setup.' };
     if(!selectedRoundEventPreset()) return { label:'Choose event card', onclick:"state.screen='round_event'; render()", primary:true, note:'Bake in this round\'s faction order from the event card.' };
     const nextFaction = nextTurnFaction();
     if(!nextFaction) return { label:'End round', onclick:'advanceRound()', primary:true, note:'All factions have taken their turn this round.' };
     const isPlayer = nextFaction === state.playerFaction;
-    return { label:isPlayer ? 'Resolve your faction turn' : `Take ${factions[nextFaction].label} turn`, onclick:`startResolver('${nextFaction}')`, primary:true, note:isPlayer ? 'Run your faction through the same automated Position-card flow.' : 'Resolve the first unclaimed action from the Position card.' };
+    return { label:isPlayer ? 'Take your turn' : `Take ${factions[nextFaction].label} turn`, onclick:`startResolver('${nextFaction}')`, primary:true, note:isPlayer ? 'Choose any open action, then use the guided resolver.' : 'Resolve the first unclaimed action from the Position card.' };
   }
   function startSoloWizard(){
     state.screen = state.boardState ? 'setup_player' : 'setup_decade';
@@ -2662,6 +2684,18 @@ window.render = render;
         ${Object.entries(factions).map(([k,v]) => `<button class="btn ${state.playerFaction===k?'primary':''}" onclick="choosePlayerFaction('${k}')"><div class="compact-card-row"><span>${pill(v.short,k)}</span><div><div style="font-size:18px;font-weight:850">${v.label}</div><div class="small">Play as ${v.label}</div></div></div></button>`).join('')}
       </div>`;
   }
+  function renderPlayerModeSetup(app){
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Step 2A</div>
+        <div class="solo-title">Solo agency</div>
+        <div class="solo-sub">Free Agency keeps your choices open. Challenge mode makes your faction follow a Position card.</div>
+      </div>
+      <div class="grid">
+        <button class="btn ${playerAgencyMode()==='free'?'primary':''}" onclick="choosePlayerAgencyMode('free')"><div style="font-size:18px;font-weight:900">Free Agency</div><div class="small" style="${playerAgencyMode()==='free'?'color:#dbeafe':''}">Choose any unclaimed action, then let the app guide the placement/removal priorities.</div></button>
+        <button class="btn ${playerAgencyMode()==='challenge'?'primary':''}" onclick="choosePlayerAgencyMode('challenge')"><div style="font-size:18px;font-weight:900">Position Card Challenge</div><div class="small" style="${playerAgencyMode()==='challenge'?'color:#dbeafe':''}">Your faction also uses a Position card and action-choice order.</div></button>
+      </div>`;
+  }
   function renderCardSetup(app){
     const f = state.selectedFaction;
     const existing = selectedCardFor(f);
@@ -2718,10 +2752,14 @@ window.render = render;
       const card = selectedCardFor(f);
       const planned = state.npPlannedActions && state.npPlannedActions[f] ? ` • Next ${state.npPlannedActions[f].toUpperCase()}` : '';
       const done = factionTurnDone(f);
+      const freePlayer = isFreeAgencyPlayer(f);
+      const title = freePlayer ? 'Free Agency' : (card ? esc(card.name) : 'No card selected');
+      const subtitle = freePlayer ? 'Choose any unclaimed action on your turn; the app still guides priority decisions.' : (card ? `${esc(card.objective)} • Goal ${card.goal}${planned}` : 'Choose a Position card before this turn.');
+      const canTake = freePlayer || !!card;
       return `<div class="solo-action ${done ? 'done':''}">
-        ${card ? npCardImageHtml(card, 'preview compact') : ''}
-        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">${factions[f].label}${f === state.playerFaction ? ' • You' : ''}</div><div class="solo-action-title">${card ? esc(card.name) : 'No card selected'}</div><div class="small">${card ? `${esc(card.objective)} • Goal ${card.goal}${planned}` : 'Choose a Position card before this turn.'}</div></div><div style="display:grid;gap:6px;justify-items:end">${pill(factions[f].short,f)}${done ? '<span class="solo-chip done">Done this round</span>' : ''}</div></div>
-        <div class="grid2">${btn(done ? 'Take again' : 'Take turn', `startResolver('${f}')`, card && !done ? 'primary':'')}${btn(done ? 'Undo done' : 'Mark done', `setFactionTurnDone('${f}', ${done ? 'false' : 'true'})`, done ? '' : 'secondary')}${btn('Card', `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div>
+        ${card && !freePlayer ? npCardImageHtml(card, 'preview compact') : ''}
+        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">${factions[f].label}${f === state.playerFaction ? ' • You' : ''}</div><div class="solo-action-title">${title}</div><div class="small">${subtitle}</div></div><div style="display:grid;gap:6px;justify-items:end">${pill(factions[f].short,f)}${done ? '<span class="solo-chip done">Done this round</span>' : ''}</div></div>
+        <div class="grid2">${btn(done ? 'Take again' : 'Take turn', `startResolver('${f}')`, canTake && !done ? 'primary':'')}${btn(done ? 'Undo done' : 'Mark done', `setFactionTurnDone('${f}', ${done ? 'false' : 'true'})`, done ? '' : 'secondary')}${freePlayer ? btn('Mode', "state.screen='setup_player_mode'; render()") : btn('Card', `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div>
       </div>`;
     }).join('');
     app.innerHTML = `
@@ -2753,21 +2791,22 @@ window.render = render;
   }
   function renderMode(app){
     const c = selectedCardFor(state.selectedFaction);
+    const freePlayer = isFreeAgencyPlayer();
     state.mode = actionAvailableFor(state.mode, state.selectedFaction) ? state.mode : firstAvailableModeForFaction(state.selectedFaction);
     const choiceNotes = {
-      act: 'Use the ACT box on the Position card.',
+      act: freePlayer ? 'Choose your own ACT, then use the guided resolver.' : 'Use the ACT box on the Position card.',
       event: 'Resolve the selected event card.',
       react: 'Skip HOUSE, BUILD, and DEVELOP during REACT.',
-      plan: 'Refresh an Organization if possible, then record the next action.'
+      plan: freePlayer ? 'Refresh an Organization if possible.' : 'Refresh an Organization if possible, then record the next action.'
     };
     const choices = cardActionChoices(state.selectedFaction);
     app.innerHTML = `
       <div class="card solo-hero">
-        <div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} automated turn</div>
-        <div class="solo-title">${esc(c ? c.name : 'Choose a card')}</div>
-        <div class="solo-sub">${c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This faction needs a Position card before it can act.'}</div>
+        <div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} ${freePlayer ? 'free agency turn' : 'automated turn'}</div>
+        <div class="solo-title">${esc(freePlayer ? 'Choose an action' : (c ? c.name : 'Choose a card'))}</div>
+        <div class="solo-sub">${freePlayer ? 'Pick any unclaimed action box. The app will still guide the placement, removal, refresh, or event decisions.' : (c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This faction needs a Position card before it can act.')}</div>
       </div>
-      ${c ? `<div class="card">${npCardImageHtml(c, 'preview')}</div>` : ''}
+      ${c && !freePlayer ? `<div class="card">${npCardImageHtml(c, 'preview')}</div>` : ''}
       <div class="mode-grid">
         ${choices.map((key, idx) => {
           const claimedBy = actionClaimedBy(key);
@@ -2780,7 +2819,7 @@ window.render = render;
         }).join('')}
       </div>
       <div class="card">
-        <div class="solo-rule"><b>Automated turn reminder</b>Only perform legal actions. If choices remain, use the NP General Priorities chart and the acting faction's principles.</div>
+        <div class="solo-rule"><b>${freePlayer ? 'Guided player turn' : 'Automated turn reminder'}</b>${freePlayer ? 'You choose the action. The app handles the chart walk so you can resolve the choice quickly.' : "Only perform legal actions. If choices remain, use the NP General Priorities chart and the acting faction's principles."}</div>
         <div class="grid2" style="margin-top:12px">${btn(`Claim ${ACTION_LABELS[state.mode] || 'ACTION'} and resolve`,'claimSelectedAndResolve()','primary')}${btn('NP Aid','openNpAid()','secondary')}</div>
       </div>`;
   }
@@ -2814,8 +2853,10 @@ window.render = render;
   back = function(){
     if(state.screen === 'np_aid'){ closeNpAid(); return; }
     if(state.screen === 'setup_decade'){ state.screen = 'home'; render(); return; }
+    if(state.screen === 'setup_player_mode'){ state.screen = 'setup_player'; render(); return; }
     if(state.screen === 'round_event'){ state.screen = 'dashboard'; render(); return; }
     if(state.screen === 'event_resolver'){ state.screen = 'mode'; render(); return; }
+    if(state.screen === 'free_resolver'){ state.screen = 'mode'; render(); return; }
     __oldBackSoloUx();
   };
 
@@ -2858,6 +2899,7 @@ window.render = render;
 
   choosePlayerFaction = function(f){
     state.playerFaction = f;
+    state.playerAgencyMode = 'free';
     state.selectedFaction = null;
     state.npCards = { public:null, community:null, private:null };
     state.npPlannedActions = { public:null, community:null, private:null };
@@ -2865,15 +2907,33 @@ window.render = render;
     state.roundTracker.turnsTaken = {};
     state.roundTracker.actionClaims = {};
     resetResolverState();
-    state.selectedFaction = Object.keys(factions)[0];
-    state.screen = 'setup_np_card';
+    state.screen = 'setup_player_mode';
     render();
   };
+
+  function choosePlayerAgencyMode(mode){
+    state.playerAgencyMode = mode === 'challenge' ? 'challenge' : 'free';
+    state.npCards = state.npCards || { public:null, community:null, private:null };
+    state.npPlannedActions = state.npPlannedActions || { public:null, community:null, private:null };
+    if(state.playerAgencyMode === 'free' && state.playerFaction) state.npCards[state.playerFaction] = null;
+    ensureTurnTracker();
+    state.roundTracker.turnsTaken = {};
+    state.roundTracker.actionClaims = {};
+    resetResolverState();
+    const first = setupCardFactions()[0];
+    if(first){
+      state.selectedFaction = first;
+      state.screen = 'setup_np_card';
+    } else {
+      state.screen = 'dashboard';
+    }
+    render();
+  }
 
   chooseNpcCard = function(id){
     if(!state.selectedFaction) return;
     state.npCards[state.selectedFaction] = id;
-    const remaining = Object.keys(factions).find(f => !state.npCards[f]);
+    const remaining = setupCardFactions().find(f => !state.npCards[f]);
     if(remaining){
       state.selectedFaction = remaining;
       state.screen = 'setup_np_card';
@@ -2882,6 +2942,132 @@ window.render = render;
     }
     render();
   };
+
+  function resetFreeGuide(effectId=null){
+    state.freeGuide = {
+      mode: state.mode,
+      stage: effectId ? 'check' : 'choose_effect',
+      effectId,
+      pool: [...DISTRICTS],
+      selected: [],
+      bulletIndex: 0,
+      showHint: false
+    };
+  }
+  function startFreeAgencyResolver(){
+    resetFreeGuide(state.mode === 'plan' ? 'place_organization' : null);
+    state.screen = 'free_resolver';
+    render();
+  }
+  function selectFreeGuideEffect(id){
+    resetFreeGuide(id);
+    render();
+  }
+  function currentFreeGuideEffect(){
+    const guide = state.freeGuide || {};
+    return freeAgencyEffect(guide.effectId);
+  }
+  function answerFreeGuideCheck(answer){
+    const guide = state.freeGuide || {};
+    const effect = currentFreeGuideEffect();
+    if(answer === 'not_sure'){
+      guide.showHint = !guide.showHint;
+      state.freeGuide = guide;
+      render();
+      return;
+    }
+    if(answer === 'no'){
+      state.result = {
+        status: 'resolved',
+        title: `${effect.label} skipped`,
+        body: `No legal ${effect.label.toLowerCase()} target was available for ${safeFactionLabel(state.selectedFaction)}.`,
+        trace: [`${safeFactionLabel(state.selectedFaction)} chose ${ACTION_LABELS[state.mode]}.`, `${effect.check} No.`]
+      };
+      state.screen = 'result';
+      render();
+      return;
+    }
+    guide.stage = 'priority';
+    guide.pool = [...DISTRICTS];
+    guide.selected = [];
+    guide.bulletIndex = 0;
+    guide.showHint = false;
+    state.freeGuide = guide;
+    render();
+  }
+  function toggleFreeGuideMatch(district){
+    const guide = state.freeGuide || {};
+    const pool = guide.pool || DISTRICTS;
+    if(!pool.includes(district)) return;
+    const set = new Set(guide.selected || []);
+    if(set.has(district)) set.delete(district); else set.add(district);
+    guide.selected = DISTRICTS.filter(d => set.has(d));
+    state.freeGuide = guide;
+    render();
+  }
+  function setFreeGuideWinner(district){
+    const guide = state.freeGuide || {};
+    const effect = currentFreeGuideEffect();
+    const column = priorityColumns[effect.column];
+    state.result = {
+      status: 'resolved',
+      title: `${effect.label} • District ${district}`,
+      body: `Resolve ${effect.label.toLowerCase()} in District ${district}, if still legal.`,
+      trace: [
+        `${safeFactionLabel(state.selectedFaction)} chose ${ACTION_LABELS[state.mode]}.`,
+        `Guided effect: ${effect.label}.`,
+        `Priority column: ${column ? column.title : effect.label}.`,
+        `Selected District ${district}.`
+      ]
+    };
+    state.screen = 'result';
+    render();
+  }
+  function confirmFreeGuideBullet(){
+    const guide = state.freeGuide || {};
+    const effect = currentFreeGuideEffect();
+    const bullets = (priorityColumns[effect.column] && priorityColumns[effect.column].bullets) || ['Player selection from remaining spaces'];
+    const selected = [...(guide.selected || [])];
+    const currentPool = [...(guide.pool || DISTRICTS)];
+    const survivors = selected.length ? selected : currentPool;
+    if(survivors.length === 1){
+      setFreeGuideWinner(survivors[0]);
+      return;
+    }
+    const nextIndex = (guide.bulletIndex || 0) + 1;
+    guide.pool = survivors;
+    guide.selected = [];
+    if(nextIndex >= bullets.length){
+      guide.stage = 'choose';
+    } else {
+      guide.bulletIndex = nextIndex;
+    }
+    state.freeGuide = guide;
+    render();
+  }
+  function renderFreeAgencyResolver(app){
+    const guide = state.freeGuide || {};
+    const modeLabel = ACTION_LABELS[guide.mode || state.mode] || 'ACTION';
+    const modeNote = guide.mode === 'react' ? 'REACT reminder: HOUSE, BUILD, and DEVELOP are not legal during REACT.' : (guide.mode === 'plan' ? 'PLAN reminder: refresh an Organization if possible.' : 'Choose the board effect you want help resolving.');
+    let body = '';
+    if(guide.stage === 'choose_effect'){
+      body = `<div class="card"><div class="solo-action-title">What are you resolving?</div><div class="small" style="margin-bottom:12px">${esc(modeNote)}</div><div class="grid">${FREE_AGENCY_EFFECTS.map(effect => `<button class="btn" onclick="selectFreeGuideEffect('${effect.id}')"><div style="font-size:17px;font-weight:900">${esc(effect.label)}</div><div class="small">${esc(priorityColumns[effect.column]?.title || effect.label)}</div></button>`).join('')}</div></div>`;
+    } else if(guide.stage === 'check'){
+      const effect = currentFreeGuideEffect();
+      body = `<div class="card"><div class="solo-action-title">${esc(effect.label)}</div><div class="panel" style="margin:10px 0"><div style="font-weight:850">${esc(effect.check)}</div><div class="small" style="margin-top:6px">${esc(effect.hint)}</div></div><div class="grid">${btn('Yes, walk priority', "answerFreeGuideCheck('yes')", 'primary')}${btn('No, skip this effect', "answerFreeGuideCheck('no')")}${btn(guide.showHint ? 'Hide hint' : 'Not sure', "answerFreeGuideCheck('not_sure')", 'secondary')}</div>${guide.showHint ? '<div class="solo-rule" style="margin-top:12px"><b>Legality first</b>If the chosen action cannot legally affect the board, skip it or go back and choose a different effect.</div>' : ''}</div>`;
+    } else if(guide.stage === 'priority'){
+      const effect = currentFreeGuideEffect();
+      const bullets = (priorityColumns[effect.column] && priorityColumns[effect.column].bullets) || ['Player selection from remaining spaces'];
+      const bulletIndex = Math.min(guide.bulletIndex || 0, Math.max(0, bullets.length - 1));
+      const pool = guide.pool || [...DISTRICTS];
+      const selected = guide.selected || [];
+      body = `<div class="card"><div class="solo-action-title">${esc(effect.label)}</div><div class="small" style="margin-bottom:8px">Select districts that match the current priority bullet.</div><div class="bullet-priority-label">Bullet ${bulletIndex + 1} of ${bullets.length}</div><div class="bullet-priority">${esc(bullets[bulletIndex])}</div><div class="small" style="margin-top:8px">Remaining: ${pool.map(d => `D${d}`).join(', ')}</div><div class="grid4" style="margin-top:10px">${pool.map(d => `<button class="btn ${selected.includes(d) ? 'selected' : ''}" onclick="toggleFreeGuideMatch('${d}')">${d}</button>`).join('')}</div><div class="grid2" style="margin-top:10px">${btn(selected.length ? `Use ${selected.length} selected` : 'No matches on this bullet', 'confirmFreeGuideBullet()', 'primary')}${btn('Back to effect check', "state.freeGuide.stage='check'; render()")}</div></div>`;
+    } else {
+      const pool = guide.pool || [...DISTRICTS];
+      body = `<div class="card"><div class="solo-action-title">Choose from tied districts</div><div class="small" style="margin-bottom:10px">The priority bullets left multiple legal districts. Pick the one you prefer.</div><div class="grid4">${pool.map(d => `<button class="btn" onclick="setFreeGuideWinner('${d}')">${d}</button>`).join('')}</div></div>`;
+    }
+    app.innerHTML = `<div class="card solo-hero"><div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} • ${modeLabel}</div><div class="solo-title">Guided resolution</div><div class="solo-sub">${esc(modeNote)}</div></div>${body}`;
+  }
 
   function eventStepResolverId(step){ return step && step.resolver ? step.resolver : inferResolverId(step); }
   function eventStepConfig(step){
@@ -3106,6 +3292,10 @@ window.render = render;
       startEventResolver();
       return;
     }
+    if(isFreeAgencyPlayer()){
+      startFreeAgencyResolver();
+      return;
+    }
     __oldStartModeResolutionSoloUx();
   };
 
@@ -3136,10 +3326,12 @@ window.render = render;
     if(state.screen === 'home'){ renderHome(app); return; }
     if(state.screen === 'setup_decade'){ renderDecadeSetup(app); return; }
     if(state.screen === 'setup_player'){ renderPlayerSetup(app); return; }
+    if(state.screen === 'setup_player_mode'){ renderPlayerModeSetup(app); return; }
     if(state.screen === 'setup_np_card'){ renderCardSetup(app); return; }
     if(state.screen === 'round_event'){ renderRoundEventPicker(app); return; }
     if(state.screen === 'dashboard'){ renderDashboard(app); return; }
     if(state.screen === 'mode'){ renderMode(app); return; }
+    if(state.screen === 'free_resolver'){ renderFreeAgencyResolver(app); return; }
     if(state.screen === 'event_resolver'){ renderEventResolver(app); return; }
     if(state.screen === 'log_action' || state.screen === 'event_protocol'){
       state.screen = 'dashboard';
@@ -3168,6 +3360,7 @@ window.render = render;
   window.advanceRound = advanceRound;
   window.loadBoardSetupPreset = loadBoardSetupPreset;
   window.choosePlayerFaction = choosePlayerFaction;
+  window.choosePlayerAgencyMode = choosePlayerAgencyMode;
   window.chooseNpcCard = chooseNpcCard;
   window.startResolver = startResolver;
   window.startModeResolution = startModeResolution;
@@ -3187,6 +3380,11 @@ window.render = render;
   window.setFactionTurnDone = setFactionTurnDone;
   window.returnDashboardMarkingTurn = returnDashboardMarkingTurn;
   window.returnDashboardWithoutMarking = returnDashboardWithoutMarking;
+  window.selectFreeGuideEffect = selectFreeGuideEffect;
+  window.answerFreeGuideCheck = answerFreeGuideCheck;
+  window.toggleFreeGuideMatch = toggleFreeGuideMatch;
+  window.confirmFreeGuideBullet = confirmFreeGuideBullet;
+  window.setFreeGuideWinner = setFreeGuideWinner;
   window.answerEventStepCheck = answerEventStepCheck;
   window.toggleEventTurnMatch = toggleEventTurnMatch;
   window.confirmEventTurnBullet = confirmEventTurnBullet;
