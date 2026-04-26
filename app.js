@@ -2228,3 +2228,315 @@ window.resetEventStepPriority = resetEventStepPriority;
 window.loadBoardSetupPreset = loadBoardSetupPreset;
 window.setEventStepResolver = setEventStepResolver;
 window.render = render;
+
+// --- Solo UX pass: friendly mobile flow informed by NP Aid + setup sheets ---
+(function installSoloUxPass(){
+  const SOLO_CSS_ID = 'solo-ux-pass-styles';
+  const SOLO_BUILD_LABEL = 'solo build v12';
+
+  function injectSoloCss(){
+    if(document.getElementById(SOLO_CSS_ID)) return;
+    const style = document.createElement('style');
+    style.id = SOLO_CSS_ID;
+    style.textContent = `
+      :root{
+        --solo-ink:#111827;
+        --solo-muted:#5b6472;
+        --solo-panel:#eef2f7;
+        --solo-line:#d9e2ec;
+        --solo-blue:#14532d;
+        --solo-accent:#2563eb;
+      }
+      body{background:#f5f7fb;color:var(--solo-ink);overflow-x:hidden}
+      .top{background:rgba(245,247,251,.96)}
+      .app{width:100%;max-width:480px;overflow-x:hidden}
+      .wrap{padding:14px}
+      .card{border-radius:18px;box-shadow:0 2px 12px rgba(15,23,42,.07);border:1px solid rgba(217,226,236,.75);padding:16px}
+      .panel{border-radius:14px;background:#edf2f7;border:1px solid rgba(217,226,236,.85)}
+      .btn{min-height:56px;border-radius:14px;font-weight:750;line-height:1.18;display:block}
+      .btn.primary{background:#12213f;border-color:#12213f}
+      .btn.secondary{background:#e8eefc;border-color:#cad7fb}
+      .btn.ghost{color:#334155}
+      .solo-hero{background:linear-gradient(180deg,#ffffff 0%,#e9f1ff 100%);border-color:#cbdcf8;overflow:hidden}
+      .solo-title{font-size:28px;font-weight:900;letter-spacing:0;line-height:1.02;margin-bottom:8px}
+      .solo-title,.solo-sub,.solo-action-title,.btn{overflow-wrap:anywhere}
+      .solo-sub{font-size:15px;color:#475569;line-height:1.35}
+      .solo-step{display:flex;gap:12px;align-items:flex-start;min-width:0}
+      .solo-step > div:last-child,.compact-card-row > div,.row > div{min-width:0}
+      .solo-num{width:32px;height:32px;border-radius:50%;background:#12213f;color:white;display:flex;align-items:center;justify-content:center;font-weight:900;flex:0 0 auto}
+      .solo-num.done{background:#047857}
+      .solo-num.wait{background:#94a3b8}
+      .solo-stack{display:grid;gap:10px}
+      .solo-action{border:1px solid #cbd5e1;background:#fff;border-radius:16px;padding:14px}
+      .solo-action-title{font-size:18px;font-weight:850;margin-bottom:4px}
+      .solo-kicker{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:850}
+      .solo-pill-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+      .solo-chip{border-radius:999px;background:#e2e8f0;padding:6px 10px;font-size:12px;font-weight:800}
+      .solo-chip.good{background:#d1fae5;color:#065f46}
+      .solo-chip.warn{background:#fef3c7;color:#92400e}
+      .solo-rule{border-left:4px solid #2563eb;background:#eff6ff;border-radius:14px;padding:12px 12px 12px 14px}
+      .solo-rule b{display:block;margin-bottom:4px}
+      .solo-sticky{position:sticky;bottom:10px;z-index:8;background:rgba(245,247,251,.92);backdrop-filter:blur(8px);border:1px solid #dbe4ee;border-radius:18px;padding:10px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
+      .aid-column{border:1px solid #dbe4ee;border-radius:14px;padding:12px;background:#fff}
+      .aid-column h3{font-size:15px;margin-bottom:8px}
+      .aid-list{margin:0;padding-left:18px;color:#334155;font-size:14px;line-height:1.35}
+      .compact-card-row{display:flex;gap:10px;align-items:flex-start}
+      .mode-grid{display:grid;grid-template-columns:1fr;gap:10px}
+      @media (min-width:390px){.mode-grid{grid-template-columns:1fr 1fr}}
+      @media (max-width:430px){
+        .wrap{padding:10px}
+        .card{padding:14px;margin-bottom:12px}
+        .solo-title{font-size:24px}
+        .solo-sub{font-size:14px}
+        .solo-pill-row{display:block}
+        .solo-chip{display:inline-block;margin:0 4px 6px 0}
+        .grid2{grid-template-columns:1fr}
+        .btn{font-size:15px;padding:12px}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function safeFactionLabel(f){ return factions[f] ? factions[f].label : 'Not chosen'; }
+  function selectedCardFor(f){ return f && state.npCards ? cards[f].find(c => c.id === state.npCards[f]) : null; }
+  function setupProgress(){
+    const board = !!state.boardState;
+    const player = !!state.playerFaction;
+    const npCardsReady = player && npFactions().every(f => !!state.npCards[f]);
+    return { board, player, npCardsReady };
+  }
+  function stepIcon(done){ return `<div class="solo-num ${done ? 'done':'wait'}">${done ? '✓':'-'}</div>`; }
+  function setupChecklistHtml(){
+    const p = setupProgress();
+    return `<div class="solo-stack">
+      <div class="solo-step">${stepIcon(p.board)}<div><div style="font-weight:850">Load a setup sheet</div><div class="solo-sub">Use the 1940 or 1950 board setup PDF as the starting board state.</div></div></div>
+      <div class="solo-step">${stepIcon(p.player)}<div><div style="font-weight:850">Choose your faction</div><div class="solo-sub">The other two factions become NP factions.</div></div></div>
+      <div class="solo-step">${stepIcon(p.npCardsReady)}<div><div style="font-weight:850">Choose NP Position cards</div><div class="solo-sub">Each NP keeps its card until the resolver tells you to replace it.</div></div></div>
+    </div>`;
+  }
+  function nextSoloAction(){
+    if(!state.boardState) return { label:'Load setup', onclick:"state.screen='setup_decade'; render()", primary:true, note:'Start from the 1940 or 1950 setup sheet.' };
+    if(!state.playerFaction) return { label:'Choose player faction', onclick:"state.screen='setup_player'; render()", primary:true, note:'Pick the faction you will play.' };
+    const missing = npFactions().find(f => !state.npCards[f]);
+    if(missing) return { label:`Choose ${factions[missing].label} card`, onclick:`state.selectedFaction='${missing}'; state.screen='setup_np_card'; render()`, primary:true, note:'Finish the NP card setup.' };
+    if(state.roundTracker && state.roundTracker.critical === null) return { label:'Start round: event check', onclick:"state.screen='round_gate'; render()", primary:true, note:'At the start of each round, mark whether the event is critical.' };
+    const firstNp = npFactions()[0];
+    return { label:`Take ${factions[firstNp].label} NP turn`, onclick:`startResolver('${firstNp}')`, primary:true, note:'Resolve ACT, EVENT, REACT, or PLAN from the Position card.' };
+  }
+  function startSoloWizard(){
+    state.screen = state.boardState ? 'setup_player' : 'setup_decade';
+    render();
+  }
+  function chooseSoloDecade(key){
+    loadBoardSetupPreset(key);
+    state.screen = state.playerFaction ? 'dashboard' : 'setup_player';
+    render();
+  }
+  function skipSoloDecade(){
+    state.screen = 'setup_player';
+    render();
+  }
+  function openNpAid(){
+    state.previousScreen = state.screen || 'dashboard';
+    state.screen = 'np_aid';
+    render();
+  }
+  function closeNpAid(){
+    state.screen = state.previousScreen || 'dashboard';
+    render();
+  }
+  function priorityColumnHtml([key, col]){
+    return `<div class="aid-column"><h3>${esc(col.title)}</h3><ol class="aid-list">${col.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ol></div>`;
+  }
+  function renderHome(app){
+    const next = nextSoloAction();
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Cross Bronx Expressway</div>
+        <div class="solo-title">Solo play companion</div>
+        <div class="solo-sub">A phone-first helper for NP setup, Position-card turns, Event decisions, Census cleanup, and the NP Aid priority chart.</div>
+        <div class="solo-pill-row">
+          <span class="solo-chip ${state.boardState ? 'good':'warn'}">${state.boardState ? state.boardState.label : 'No setup loaded'}</span>
+          <span class="solo-chip">${state.playerFaction ? `You: ${safeFactionLabel(state.playerFaction)}` : 'Faction not chosen'}</span>
+          <span class="solo-chip">${SOLO_BUILD_LABEL}</span>
+        </div>
+      </div>
+      <div class="card">${setupChecklistHtml()}</div>
+      <div class="card">
+        <div class="solo-kicker">Next</div>
+        <div class="solo-action-title">${esc(next.note)}</div>
+        <div class="grid" style="margin-top:12px">
+          ${btn(next.label, next.onclick, next.primary ? 'primary' : '')}
+          ${btn('Open NP Aid', 'openNpAid()', 'secondary')}
+          ${btn('Load saved game', 'loadStateLocal()')}
+        </div>
+      </div>`;
+  }
+  function renderDecadeSetup(app){
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Step 1</div>
+        <div class="solo-title">Choose setup sheet</div>
+        <div class="solo-sub">The board setup PDFs list starting resources, losses, tax rate, corrections, and district contents.</div>
+      </div>
+      <div class="grid">
+        <button class="btn primary" onclick="chooseSoloDecade('1940')"><div style="font-size:18px">Load 1940 setup</div><div class="small">PUB 7 • COM 5 • PRI 9 • Corrections 6</div></button>
+        <button class="btn primary" onclick="chooseSoloDecade('1950')"><div style="font-size:18px">Load 1950 setup</div><div class="small">PUB 5 • COM 3 • PRI 4 • Corrections 8</div></button>
+        ${btn('Skip setup sheet for now', 'skipSoloDecade()')}
+      </div>`;
+  }
+  function renderPlayerSetup(app){
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Step 2</div>
+        <div class="solo-title">Who are you playing?</div>
+        <div class="solo-sub">Tap your faction. The other two become automated NP factions.</div>
+      </div>
+      <div class="grid">
+        ${Object.entries(factions).map(([k,v]) => `<button class="btn ${state.playerFaction===k?'primary':''}" onclick="choosePlayerFaction('${k}')"><div class="compact-card-row"><span>${pill(v.short,k)}</span><div><div style="font-size:18px;font-weight:850">${v.label}</div><div class="small">Play as ${v.label}</div></div></div></button>`).join('')}
+      </div>`;
+  }
+  function renderCardSetup(app){
+    const f = state.selectedFaction;
+    const existing = selectedCardFor(f);
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Step 3</div>
+        <div class="solo-title">${safeFactionLabel(f)} Position card</div>
+        <div class="solo-sub">${existing ? `${existing.name} is selected. Tap another card to replace it.` : 'Choose the NP Position card currently drawn for this faction.'}</div>
+      </div>
+      <div class="grid">
+        ${cards[f].map(card => {
+          const isSelected = state.npCards[f] === card.id;
+          const rows = card.rows.map(row => `<div class="small"><b>${row.index}.</b> ${esc(row.condition)} -> <b>${esc(row.action)}</b></div>`).join('');
+          return `<button class="btn ${isSelected ? 'primary':''}" onclick="chooseNpcCard('${card.id}')"><div class="row"><div><div style="font-size:18px;font-weight:900">${esc(card.name)}</div><div class="small">${esc(card.objective)} • Goal ${card.goal}</div></div><span class="badge">${isSelected ? 'Selected':'Choose'}</span></div><div style="margin-top:10px;display:grid;gap:4px">${rows}</div></button>`;
+        }).join('')}
+      </div>`;
+  }
+  function renderDashboard(app){
+    if(!state.playerFaction){
+      renderHome(app);
+      return;
+    }
+    const next = nextSoloAction();
+    const criticalLabel = state.roundTracker.critical === null ? 'Event unchecked' : (state.roundTracker.critical ? 'Critical event' : 'Normal event');
+    const npCards = npFactions().map(f => {
+      const card = selectedCardFor(f);
+      const planned = state.npPlannedActions && state.npPlannedActions[f] ? ` • Next ${state.npPlannedActions[f].toUpperCase()}` : '';
+      return `<div class="solo-action">
+        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">${factions[f].label} NP</div><div class="solo-action-title">${card ? esc(card.name) : 'No card selected'}</div><div class="small">${card ? `${esc(card.objective)} • Goal ${card.goal}${planned}` : 'Choose a Position card before this NP turn.'}</div></div>${pill(factions[f].short,f)}</div>
+        <div class="grid2">${btn('Take turn', `startResolver('${f}')`, card ? 'primary':'')}${btn('Card', `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div>
+      </div>`;
+    }).join('');
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="row" style="align-items:flex-start">
+          <div><div class="solo-kicker">Solo dashboard</div><div class="solo-title">Round ${state.roundTracker.round}</div><div class="solo-sub">${criticalLabel} • You are playing ${safeFactionLabel(state.playerFaction)}</div></div>
+          ${pill(factions[state.playerFaction].short, state.playerFaction)}
+        </div>
+      </div>
+      <div class="card">
+        <div class="solo-kicker">Best next tap</div>
+        <div class="solo-action-title">${esc(next.note)}</div>
+        <div class="grid2" style="margin-top:12px">${btn(next.label, next.onclick, 'primary')}${btn('NP Aid', 'openNpAid()', 'secondary')}</div>
+      </div>
+      <div class="card">${boardStateSummaryHtml()}</div>
+      <div class="solo-stack">${npCards}</div>
+      <div class="card">
+        <div class="row" style="margin-bottom:12px"><div><div class="solo-action-title">Action log</div><div class="small">Record the board change after resolving an NP action.</div></div><span class="badge">${state.actionLog.length}</span></div>
+        <div class="grid2" style="margin-bottom:12px">${btn('Log action','openActionLogger()','primary')}${btn('Save / load',"state.screen='save_load'; render()")}</div>
+        ${state.actionLog.length ? state.actionLog.slice(0,4).map(item => `<div class="panel" style="margin-top:8px"><div style="font-weight:800">${esc(item.title || `${(item.faction||'').toUpperCase()} ${item.mode}`)}</div><div class="small">${esc(item.body || '')}</div></div>`).join('') : '<div class="muted">No actions logged yet.</div>'}
+      </div>
+      <div class="solo-sticky"><div class="grid2">${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8' : 'End round', 'advanceRound()')}${btn('Save', 'saveStateLocal()', 'secondary')}</div></div>`;
+  }
+  function renderMode(app){
+    const c = selectedCardFor(state.selectedFaction);
+    const modes = [
+      ['act','ACT','Use the ACT box on the Position card.'],
+      ['event','EVENT','Resolve the current Event first.'],
+      ['react','REACT','Skip HOUSE, BUILD, and DEVELOP during REACT.'],
+      ['plan','PLAN','Refresh an Organization if possible, then record the next action.']
+    ];
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} NP turn</div>
+        <div class="solo-title">${esc(c ? c.name : 'Choose a card')}</div>
+        <div class="solo-sub">${c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This NP needs a Position card before it can act.'}</div>
+      </div>
+      <div class="mode-grid">
+        ${modes.map(([key,label,note]) => `<button class="btn ${state.mode===key?'primary':''}" onclick="state.mode='${key}'; render()"><div style="font-size:18px">${label}</div><div class="small" style="${state.mode===key?'color:#dbeafe':''}">${note}</div></button>`).join('')}
+      </div>
+      <div class="card">
+        <div class="solo-rule"><b>NP Aid reminder</b>Only perform legal actions. If choices remain, use the NP General Priorities chart and the acting faction's principles.</div>
+        <div class="grid2" style="margin-top:12px">${btn('Resolve selected mode','startModeResolution()','primary')}${btn('NP Aid','openNpAid()','secondary')}</div>
+      </div>`;
+  }
+  function renderNpAid(app){
+    const topPrinciples = NP_AID_GENERAL_PRINCIPLES.slice(0, 4).map(x => `<li>${esc(x)}</li>`).join('');
+    const remainingPrinciples = NP_AID_GENERAL_PRINCIPLES.slice(4).map(x => `<li>${esc(x)}</li>`).join('');
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Reference</div>
+        <div class="solo-title">NP Aid</div>
+        <div class="solo-sub">Built from the Non-Player Aid PDF: golden rule, general principles, and priority columns.</div>
+      </div>
+      <div class="card">
+        <div class="solo-rule"><b>Golden rule</b>NP factions follow normal rules and only perform legal actions. When the rules or priorities run out, choose the result that makes the most sense for the South Bronx.</div>
+      </div>
+      <div class="card">
+        <div class="solo-action-title">General principles</div>
+        <ol class="aid-list" style="margin-top:10px">${topPrinciples}${remainingPrinciples}</ol>
+      </div>
+      <div class="card">
+        <div class="solo-action-title">General priority columns</div>
+        <div class="solo-sub" style="margin-bottom:12px">For movement, use Place X for destination and Remove X for origin.</div>
+        <div class="solo-stack">${Object.entries(priorityColumns).map(priorityColumnHtml).join('')}</div>
+      </div>
+      <div class="solo-sticky">${btn('Back', 'closeNpAid()', 'primary')}</div>`;
+  }
+
+  injectSoloCss();
+
+  const __oldBackSoloUx = back;
+  back = function(){
+    if(state.screen === 'np_aid'){ closeNpAid(); return; }
+    if(state.screen === 'setup_decade'){ state.screen = 'home'; render(); return; }
+    __oldBackSoloUx();
+  };
+
+  const __oldResetAllSoloUx = resetAll;
+  resetAll = function(){
+    __oldResetAllSoloUx();
+    state.previousScreen = null;
+    state.screen = 'home';
+    render();
+  };
+
+  beginSoloSetup = function(){ startSoloWizard(); };
+
+  const __oldRenderSoloUx = render;
+  render = function(){
+    injectSoloCss();
+    const app = document.getElementById('app');
+    if(!app) return;
+    if(state.screen === 'home'){ renderHome(app); return; }
+    if(state.screen === 'setup_decade'){ renderDecadeSetup(app); return; }
+    if(state.screen === 'setup_player'){ renderPlayerSetup(app); return; }
+    if(state.screen === 'setup_np_card'){ renderCardSetup(app); return; }
+    if(state.screen === 'dashboard'){ renderDashboard(app); return; }
+    if(state.screen === 'mode'){ renderMode(app); return; }
+    if(state.screen === 'np_aid'){ renderNpAid(app); return; }
+    __oldRenderSoloUx();
+  };
+
+  window.render = render;
+  window.back = back;
+  window.resetAll = resetAll;
+  window.beginSoloSetup = beginSoloSetup;
+  window.startSoloWizard = startSoloWizard;
+  window.chooseSoloDecade = chooseSoloDecade;
+  window.skipSoloDecade = skipSoloDecade;
+  window.openNpAid = openNpAid;
+  window.closeNpAid = closeNpAid;
+  render();
+})();
