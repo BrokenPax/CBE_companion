@@ -2232,7 +2232,7 @@ window.render = render;
 // --- Solo UX pass: friendly mobile flow informed by NP Aid + setup sheets ---
 (function installSoloUxPass(){
   const SOLO_CSS_ID = 'solo-ux-pass-styles';
-  const SOLO_BUILD_LABEL = 'solo build v12';
+  const SOLO_BUILD_LABEL = 'solo build v13';
 
   function injectSoloCss(){
     if(document.getElementById(SOLO_CSS_ID)) return;
@@ -2268,12 +2268,15 @@ window.render = render;
       .solo-num.wait{background:#94a3b8}
       .solo-stack{display:grid;gap:10px}
       .solo-action{border:1px solid #cbd5e1;background:#fff;border-radius:16px;padding:14px}
+      .solo-action.done{background:#f4f7f6;border-color:#b7ddca;opacity:.82}
+      .solo-action.done .solo-action-title{color:#647067}
       .solo-action-title{font-size:18px;font-weight:850;margin-bottom:4px}
       .solo-kicker{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:850}
       .solo-pill-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
       .solo-chip{border-radius:999px;background:#e2e8f0;padding:6px 10px;font-size:12px;font-weight:800}
       .solo-chip.good{background:#d1fae5;color:#065f46}
       .solo-chip.warn{background:#fef3c7;color:#92400e}
+      .solo-chip.done{background:#bbf7d0;color:#166534}
       .solo-rule{border-left:4px solid #2563eb;background:#eff6ff;border-radius:14px;padding:12px 12px 12px 14px}
       .solo-rule b{display:block;margin-bottom:4px}
       .solo-sticky{position:sticky;bottom:10px;z-index:8;background:rgba(245,247,251,.92);backdrop-filter:blur(8px);border:1px solid #dbe4ee;border-radius:18px;padding:10px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
@@ -2299,6 +2302,37 @@ window.render = render;
 
   function safeFactionLabel(f){ return factions[f] ? factions[f].label : 'Not chosen'; }
   function selectedCardFor(f){ return f && state.npCards ? cards[f].find(c => c.id === state.npCards[f]) : null; }
+  function ensureTurnTracker(){
+    state.roundTracker = state.roundTracker || { round: 1, max: 8, critical: null, checked: false, pendingScreen: null };
+    state.roundTracker.turnsTaken = state.roundTracker.turnsTaken || {};
+    return state.roundTracker.turnsTaken;
+  }
+  function factionTurnDone(f){
+    return !!ensureTurnTracker()[f];
+  }
+  function setFactionTurnDone(f, value=true){
+    if(!f || !factions[f]) return;
+    const turns = ensureTurnTracker();
+    if(value) turns[f] = true;
+    else delete turns[f];
+    render();
+  }
+  function returnDashboardMarkingTurn(){
+    if(state.selectedFaction && npFactions().includes(state.selectedFaction)) {
+      setFactionTurnDone(state.selectedFaction, true);
+      return;
+    }
+    state.screen = 'dashboard';
+    render();
+  }
+  function shouldOfferTurnDone(){
+    if(!state.selectedFaction || !npFactions().includes(state.selectedFaction) || !state.result) return false;
+    const title = (state.result.title || '').toLowerCase();
+    if(title.includes('event not available')) return false;
+    if(title.includes('state saved') || title.includes('load failed') || title.includes('import failed')) return false;
+    if(title.includes('round ') && title.includes('started')) return false;
+    return ['resolved','discard'].includes(state.result.status);
+  }
   function setupProgress(){
     const board = !!state.boardState;
     const player = !!state.playerFaction;
@@ -2320,8 +2354,9 @@ window.render = render;
     const missing = npFactions().find(f => !state.npCards[f]);
     if(missing) return { label:`Choose ${factions[missing].label} card`, onclick:`state.selectedFaction='${missing}'; state.screen='setup_np_card'; render()`, primary:true, note:'Finish the NP card setup.' };
     if(state.roundTracker && state.roundTracker.critical === null) return { label:'Start round: event check', onclick:"state.screen='round_gate'; render()", primary:true, note:'At the start of each round, mark whether the event is critical.' };
-    const firstNp = npFactions()[0];
-    return { label:`Take ${factions[firstNp].label} NP turn`, onclick:`startResolver('${firstNp}')`, primary:true, note:'Resolve ACT, EVENT, REACT, or PLAN from the Position card.' };
+    const nextNp = npFactions().find(f => !factionTurnDone(f));
+    if(!nextNp) return { label:'End round', onclick:'advanceRound()', primary:true, note:'Both NP factions have taken their turn this round.' };
+    return { label:`Take ${factions[nextNp].label} NP turn`, onclick:`startResolver('${nextNp}')`, primary:true, note:'Resolve ACT, EVENT, REACT, or PLAN from the Position card.' };
   }
   function startSoloWizard(){
     state.screen = state.boardState ? 'setup_player' : 'setup_decade';
@@ -2420,12 +2455,14 @@ window.render = render;
     }
     const next = nextSoloAction();
     const criticalLabel = state.roundTracker.critical === null ? 'Event unchecked' : (state.roundTracker.critical ? 'Critical event' : 'Normal event');
+    const doneCount = npFactions().filter(factionTurnDone).length;
     const npCards = npFactions().map(f => {
       const card = selectedCardFor(f);
       const planned = state.npPlannedActions && state.npPlannedActions[f] ? ` • Next ${state.npPlannedActions[f].toUpperCase()}` : '';
-      return `<div class="solo-action">
-        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">${factions[f].label} NP</div><div class="solo-action-title">${card ? esc(card.name) : 'No card selected'}</div><div class="small">${card ? `${esc(card.objective)} • Goal ${card.goal}${planned}` : 'Choose a Position card before this NP turn.'}</div></div>${pill(factions[f].short,f)}</div>
-        <div class="grid2">${btn('Take turn', `startResolver('${f}')`, card ? 'primary':'')}${btn('Card', `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div>
+      const done = factionTurnDone(f);
+      return `<div class="solo-action ${done ? 'done':''}">
+        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">${factions[f].label} NP</div><div class="solo-action-title">${card ? esc(card.name) : 'No card selected'}</div><div class="small">${card ? `${esc(card.objective)} • Goal ${card.goal}${planned}` : 'Choose a Position card before this NP turn.'}</div></div><div style="display:grid;gap:6px;justify-items:end">${pill(factions[f].short,f)}${done ? '<span class="solo-chip done">Done this round</span>' : ''}</div></div>
+        <div class="grid2">${btn(done ? 'Take again' : 'Take turn', `startResolver('${f}')`, card && !done ? 'primary':'')}${btn(done ? 'Undo done' : 'Mark done', `setFactionTurnDone('${f}', ${done ? 'false' : 'true'})`, done ? '' : 'secondary')}${btn('Card', `state.selectedFaction='${f}'; state.screen='setup_np_card'; render()`)}</div>
       </div>`;
     }).join('');
     app.innerHTML = `
@@ -2438,6 +2475,7 @@ window.render = render;
       <div class="card">
         <div class="solo-kicker">Best next tap</div>
         <div class="solo-action-title">${esc(next.note)}</div>
+        <div class="small" style="margin-top:6px">${doneCount} of ${npFactions().length} NP turns done this round.</div>
         <div class="grid2" style="margin-top:12px">${btn(next.label, next.onclick, 'primary')}${btn('NP Aid', 'openNpAid()', 'secondary')}</div>
       </div>
       <div class="card">${boardStateSummaryHtml()}</div>
@@ -2508,8 +2546,24 @@ window.render = render;
   resetAll = function(){
     __oldResetAllSoloUx();
     state.previousScreen = null;
+    ensureTurnTracker();
+    state.roundTracker.turnsTaken = {};
     state.screen = 'home';
     render();
+  };
+
+  const __oldAdvanceRoundSoloUx = advanceRound;
+  advanceRound = function(){
+    __oldAdvanceRoundSoloUx();
+    ensureTurnTracker();
+    state.roundTracker.turnsTaken = {};
+  };
+
+  const __oldLoadBoardSetupPresetSoloUx = loadBoardSetupPreset;
+  loadBoardSetupPreset = function(key){
+    __oldLoadBoardSetupPresetSoloUx(key);
+    ensureTurnTracker();
+    state.roundTracker.turnsTaken = {};
   };
 
   beginSoloSetup = function(){ startSoloWizard(); };
@@ -2526,17 +2580,33 @@ window.render = render;
     if(state.screen === 'dashboard'){ renderDashboard(app); return; }
     if(state.screen === 'mode'){ renderMode(app); return; }
     if(state.screen === 'np_aid'){ renderNpAid(app); return; }
+    if(state.screen === 'result' && state.result && shouldOfferTurnDone()){
+      const r = state.result;
+      const resultClass = r.status === 'resolved' ? 'result-resolved' : r.status === 'continue' ? 'result-continue' : 'result-discard';
+      const iconClass = r.status === 'discard' ? 'iconbox warn' : 'iconbox ok';
+      const extra = r.status === 'discard'
+        ? btn('Draw replacement card', 'handleDiscardReplacement()')
+        : r.status === 'continue'
+          ? btn('Resolve another district', 'continueSameAction()') + btn('Finish this action', 'finishThisAction()')
+          : btn('Resolve this NP again', `startResolver('${state.selectedFaction}')`);
+      app.innerHTML = `<div class="card ${resultClass}"><div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px"><div class="${iconClass}">${r.status === 'discard' ? '!' : '✓'}</div><div><div style="font-size:22px;font-weight:800">${esc(r.title)}</div><div class="muted" style="margin-top:4px">${esc(r.body)}</div></div></div><div class="grid">${btn('Return and mark done', 'returnDashboardMarkingTurn()', 'primary')}${btn('Return without marking', "state.screen='dashboard'; render()")}${extra}</div></div><div class="card"><div style="font-weight:700;margin-bottom:8px">Why it did that</div>${(r.trace && r.trace.length ? r.trace : ['No rules trace was captured for this result.']).map(line => `<div class="trace" style="margin-top:8px">${esc(line)}</div>`).join('')}</div>`;
+      return;
+    }
     __oldRenderSoloUx();
   };
 
   window.render = render;
   window.back = back;
   window.resetAll = resetAll;
+  window.advanceRound = advanceRound;
+  window.loadBoardSetupPreset = loadBoardSetupPreset;
   window.beginSoloSetup = beginSoloSetup;
   window.startSoloWizard = startSoloWizard;
   window.chooseSoloDecade = chooseSoloDecade;
   window.skipSoloDecade = skipSoloDecade;
   window.openNpAid = openNpAid;
   window.closeNpAid = closeNpAid;
+  window.setFactionTurnDone = setFactionTurnDone;
+  window.returnDashboardMarkingTurn = returnDashboardMarkingTurn;
   render();
 })();
