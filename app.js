@@ -2232,7 +2232,7 @@ window.render = render;
 // --- Solo UX pass: friendly mobile flow informed by NP Aid + setup sheets ---
 (function installSoloUxPass(){
   const SOLO_CSS_ID = 'solo-ux-pass-styles';
-  const SOLO_BUILD_LABEL = 'solo build v15';
+  const SOLO_BUILD_LABEL = 'solo build v16';
 
   function injectSoloCss(){
     if(document.getElementById(SOLO_CSS_ID)) return;
@@ -2381,9 +2381,12 @@ window.render = render;
     const order = Array.isArray(state.roundTracker.eventOrder) ? state.roundTracker.eventOrder : (preset ? preset.order : []);
     return order.filter(f => factions[f]);
   }
-  function npTurnOrder(){
-    const ordered = roundFactionOrder().filter(f => npFactions().includes(f));
-    return ordered.length ? ordered : npFactions();
+  function turnOrder(){
+    const ordered = roundFactionOrder();
+    return ordered.length ? ordered : Object.keys(factions);
+  }
+  function nextTurnFaction(){
+    return turnOrder().find(f => !factionTurnDone(f));
   }
   function roundEventLabel(){
     const preset = selectedRoundEventPreset();
@@ -2434,6 +2437,7 @@ window.render = render;
     return state.roundTracker.actionClaims;
   }
   function cardActionChoices(f){
+    if(f === state.playerFaction) return ['act','event','react','plan'];
     const card = selectedCardFor(f);
     if(!card) return ['act','event','react','plan'];
     return POSITION_ACTION_CHOICES[card.id] || ['act','event','react','plan'];
@@ -2442,7 +2446,6 @@ window.render = render;
     return ensureActionClaims()[mode] || null;
   }
   function actionRoundBlockedReason(mode){
-    if(mode === 'event' && state.roundTracker && state.roundTracker.critical === false) return 'Not critical';
     return '';
   }
   function actionAvailableFor(mode, f){
@@ -2468,8 +2471,16 @@ window.render = render;
     if(!state.playerFaction) return;
     if(actionRoundBlockedReason(mode)) return;
     const claimedBy = actionClaimedBy(mode);
-    if(claimedBy === state.playerFaction) clearActionClaim(mode);
-    else if(!claimedBy) claimAction(mode, state.playerFaction);
+    const turns = ensureTurnTracker();
+    if(claimedBy === state.playerFaction){
+      delete ensureActionClaims()[mode];
+      delete turns[state.playerFaction];
+      render();
+    } else if(!claimedBy && nextTurnFaction() === state.playerFaction) {
+      ensureActionClaims()[mode] = state.playerFaction;
+      turns[state.playerFaction] = true;
+      render();
+    }
   }
   function firstAvailableModeForFaction(f){
     const choices = cardActionChoices(f);
@@ -2489,6 +2500,12 @@ window.render = render;
     }
     const claims = ensureActionClaims();
     claims[state.mode] = state.selectedFaction;
+    if(state.selectedFaction === state.playerFaction){
+      ensureTurnTracker()[state.selectedFaction] = true;
+      state.screen = 'dashboard';
+      render();
+      return;
+    }
     startModeResolution();
   }
   function actionClaimSummaryHtml(){
@@ -2507,12 +2524,14 @@ window.render = render;
   function turnOrderHtml(){
     const order = roundFactionOrder();
     if(!order.length) return '<div class="muted">Choose this round\'s event card to bake in faction order.</div>';
-    const nextNp = npTurnOrder().find(f => !factionTurnDone(f));
+    const nextFaction = nextTurnFaction();
     return `<div class="turn-order">${order.map((f, idx) => {
       const isPlayer = f === state.playerFaction;
-      const done = !isPlayer && factionTurnDone(f);
-      const next = f === nextNp;
-      const note = isPlayer ? 'You' : (done ? 'Done this round' : (next ? 'Next NP turn' : 'Waiting'));
+      const done = factionTurnDone(f);
+      const next = f === nextFaction;
+      const claim = Object.entries(ensureActionClaims()).find(([, claimant]) => claimant === f);
+      const actionText = claim ? ` • ${ACTION_LABELS[claim[0]]}` : '';
+      const note = done ? `Done this round${actionText}` : (next ? (isPlayer ? 'Your turn' : 'Next NP turn') : 'Waiting');
       return `<div class="turn-order-step ${done ? 'done' : ''} ${next ? 'next' : ''}"><div class="turn-index">${idx + 1}</div><div style="min-width:0"><div style="font-weight:900">${safeFactionLabel(f)}</div><div class="small">${esc(note)}</div></div></div>`;
     }).join('')}</div>`;
   }
@@ -2527,7 +2546,7 @@ window.render = render;
     render();
   }
   function returnDashboardMarkingTurn(){
-    if(state.selectedFaction && npFactions().includes(state.selectedFaction)) {
+    if(state.selectedFaction && factions[state.selectedFaction]) {
       if(state.mode) claimAction(state.mode, state.selectedFaction);
       setFactionTurnDone(state.selectedFaction, true);
       return;
@@ -2536,7 +2555,7 @@ window.render = render;
     render();
   }
   function shouldOfferTurnDone(){
-    if(!state.selectedFaction || !npFactions().includes(state.selectedFaction) || !state.result) return false;
+    if(!state.selectedFaction || !factions[state.selectedFaction] || !state.result) return false;
     const title = (state.result.title || '').toLowerCase();
     if(title.includes('event not available')) return false;
     if(title.includes('state saved') || title.includes('load failed') || title.includes('import failed')) return false;
@@ -2565,9 +2584,10 @@ window.render = render;
     if(missing) return { label:`Choose ${factions[missing].label} card`, onclick:`state.selectedFaction='${missing}'; state.screen='setup_np_card'; render()`, primary:true, note:'Finish the NP card setup.' };
     if(!selectedRoundEventPreset()) return { label:'Choose event card', onclick:"state.screen='round_event'; render()", primary:true, note:'Bake in this round\'s faction order from the event card.' };
     if(state.roundTracker && state.roundTracker.critical === null) return { label:'Start round: event check', onclick:"state.screen='round_gate'; render()", primary:true, note:'At the start of each round, mark whether the event is critical.' };
-    const nextNp = npTurnOrder().find(f => !factionTurnDone(f));
-    if(!nextNp) return { label:'End round', onclick:'advanceRound()', primary:true, note:'Both NP factions have taken their turn this round.' };
-    return { label:`Take ${factions[nextNp].label} NP turn`, onclick:`startResolver('${nextNp}')`, primary:true, note:'Resolve the first unclaimed action from the Position card.' };
+    const nextFaction = nextTurnFaction();
+    if(!nextFaction) return { label:'End round', onclick:'advanceRound()', primary:true, note:'All factions have taken their turn this round.' };
+    const isPlayer = nextFaction === state.playerFaction;
+    return { label:isPlayer ? 'Take your turn' : `Take ${factions[nextFaction].label} NP turn`, onclick:`startResolver('${nextFaction}')`, primary:true, note:isPlayer ? 'Choose and claim your action box before the NP factions continue.' : 'Resolve the first unclaimed action from the Position card.' };
   }
   function startSoloWizard(){
     state.screen = state.boardState ? 'setup_player' : 'setup_decade';
@@ -2692,7 +2712,8 @@ window.render = render;
     }
     const next = nextSoloAction();
     const criticalLabel = state.roundTracker.critical === null ? 'Event unchecked' : (state.roundTracker.critical ? 'Critical event' : 'Normal event');
-    const doneCount = npFactions().filter(factionTurnDone).length;
+    const order = turnOrder();
+    const doneCount = order.filter(factionTurnDone).length;
     const npCards = npFactions().map(f => {
       const card = selectedCardFor(f);
       const planned = state.npPlannedActions && state.npPlannedActions[f] ? ` • Next ${state.npPlannedActions[f].toUpperCase()}` : '';
@@ -2713,7 +2734,7 @@ window.render = render;
       <div class="card">
         <div class="solo-kicker">Best next tap</div>
         <div class="solo-action-title">${esc(next.note)}</div>
-        <div class="small" style="margin-top:6px">${doneCount} of ${npFactions().length} NP turns done this round.</div>
+        <div class="small" style="margin-top:6px">${doneCount} of ${order.length} faction turns done this round.</div>
         <div class="grid2" style="margin-top:12px">${btn(next.label, next.onclick, 'primary')}${btn('NP Aid', 'openNpAid()', 'secondary')}</div>
       </div>
       <div class="card">
@@ -2723,35 +2744,31 @@ window.render = render;
         <div class="grid2" style="margin-top:12px">${btn(selectedRoundEventPreset() ? 'Change event card' : 'Choose event card', "state.screen='round_event'; render()", selectedRoundEventPreset() ? '' : 'primary')}${btn(state.roundTracker.critical === null ? 'Critical check' : 'Edit critical check', "state.screen='round_gate'; render()", 'secondary')}</div>
       </div>
       <div class="card">
-        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">Action boxes</div><div class="solo-action-title">One claim per round</div><div class="small">Tap your player action after you take it. NP turns skip claimed boxes.</div></div></div>
+        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">Action boxes</div><div class="solo-action-title">One claim per round</div><div class="small">Claimed boxes are locked for later factions this round.</div></div></div>
         ${actionClaimSummaryHtml()}
       </div>
       <div class="card">${boardStateSummaryHtml()}</div>
       <div class="solo-stack">${npCards}</div>
-      <div class="card">
-        <div class="row" style="margin-bottom:12px"><div><div class="solo-action-title">Action log</div><div class="small">Record the board change after resolving an NP action.</div></div><span class="badge">${state.actionLog.length}</span></div>
-        <div class="grid2" style="margin-bottom:12px">${btn('Log action','openActionLogger()','primary')}${btn('Save / load',"state.screen='save_load'; render()")}</div>
-        ${state.actionLog.length ? state.actionLog.slice(0,4).map(item => `<div class="panel" style="margin-top:8px"><div style="font-weight:800">${esc(item.title || `${(item.faction||'').toUpperCase()} ${item.mode}`)}</div><div class="small">${esc(item.body || '')}</div></div>`).join('') : '<div class="muted">No actions logged yet.</div>'}
-      </div>
-      <div class="solo-sticky"><div class="grid2">${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8' : 'End round', 'advanceRound()')}${btn('Save', 'saveStateLocal()', 'secondary')}</div></div>`;
+      <div class="solo-sticky"><div class="grid2">${btn(state.roundTracker.round === state.roundTracker.max ? 'End round 8' : 'End round', 'advanceRound()')}${btn('Save / load', "state.screen='save_load'; render()", 'secondary')}</div></div>`;
   }
   function renderMode(app){
     const c = selectedCardFor(state.selectedFaction);
+    const isPlayer = state.selectedFaction === state.playerFaction;
     state.mode = actionAvailableFor(state.mode, state.selectedFaction) ? state.mode : firstAvailableModeForFaction(state.selectedFaction);
     const choiceNotes = {
       act: 'Use the ACT box on the Position card.',
-      event: state.roundTracker.critical === true ? 'Resolve the selected event card.' : 'Unavailable because this event is not critical.',
+      event: 'Resolve the selected event card.',
       react: 'Skip HOUSE, BUILD, and DEVELOP during REACT.',
       plan: 'Refresh an Organization if possible, then record the next action.'
     };
     const choices = cardActionChoices(state.selectedFaction);
     app.innerHTML = `
       <div class="card solo-hero">
-        <div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} NP turn</div>
-        <div class="solo-title">${esc(c ? c.name : 'Choose a card')}</div>
-        <div class="solo-sub">${c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This NP needs a Position card before it can act.'}</div>
+        <div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} ${isPlayer ? 'turn' : 'NP turn'}</div>
+        <div class="solo-title">${esc(isPlayer ? 'Choose your action' : (c ? c.name : 'Choose a card'))}</div>
+        <div class="solo-sub">${isPlayer ? 'Claim one available action box for your faction. Later factions must choose a different box.' : (c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This NP needs a Position card before it can act.')}</div>
       </div>
-      ${c ? `<div class="card">${npCardImageHtml(c, 'preview')}</div>` : ''}
+      ${!isPlayer && c ? `<div class="card">${npCardImageHtml(c, 'preview')}</div>` : ''}
       <div class="mode-grid">
         ${choices.map((key, idx) => {
           const claimedBy = actionClaimedBy(key);
@@ -2764,8 +2781,8 @@ window.render = render;
         }).join('')}
       </div>
       <div class="card">
-        <div class="solo-rule"><b>NP Aid reminder</b>Only perform legal actions. If choices remain, use the NP General Priorities chart and the acting faction's principles.</div>
-        <div class="grid2" style="margin-top:12px">${btn(`Claim ${ACTION_LABELS[state.mode] || 'ACTION'} and resolve`,'claimSelectedAndResolve()','primary')}${btn('NP Aid','openNpAid()','secondary')}</div>
+        <div class="solo-rule"><b>${isPlayer ? 'Player action' : 'NP Aid reminder'}</b>${isPlayer ? 'Choose the action you are taking on the board, then continue. The app will lock that box for the rest of the round.' : "Only perform legal actions. If choices remain, use the NP General Priorities chart and the acting faction's principles."}</div>
+        <div class="grid2" style="margin-top:12px">${btn(isPlayer ? `Claim ${ACTION_LABELS[state.mode] || 'ACTION'} and continue` : `Claim ${ACTION_LABELS[state.mode] || 'ACTION'} and resolve`,'claimSelectedAndResolve()','primary')}${btn('NP Aid','openNpAid()','secondary')}</div>
       </div>`;
   }
   function renderNpAid(app){
@@ -2862,11 +2879,28 @@ window.render = render;
     render();
   };
 
+  const __oldStartModeResolutionSoloUx = startModeResolution;
+  startModeResolution = function(){
+    if(state.mode === 'event'){
+      openEventProtocol(true);
+      return;
+    }
+    __oldStartModeResolutionSoloUx();
+  };
+
+  function bindTopButtons(){
+    const backBtn = document.getElementById('backBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    if(backBtn) backBtn.onclick = () => back();
+    if(resetBtn) resetBtn.onclick = () => resetAll();
+  }
+
   beginSoloSetup = function(){ startSoloWizard(); };
 
   const __oldRenderSoloUx = render;
   render = function(){
     injectSoloCss();
+    bindTopButtons();
     const app = document.getElementById('app');
     if(!app) return;
     if(state.screen === 'home'){ renderHome(app); return; }
@@ -2898,6 +2932,7 @@ window.render = render;
   window.advanceRound = advanceRound;
   window.loadBoardSetupPreset = loadBoardSetupPreset;
   window.startResolver = startResolver;
+  window.startModeResolution = startModeResolution;
   window.beginSoloSetup = beginSoloSetup;
   window.startSoloWizard = startSoloWizard;
   window.chooseSoloDecade = chooseSoloDecade;
@@ -2911,5 +2946,6 @@ window.render = render;
   window.claimSelectedAndResolve = claimSelectedAndResolve;
   window.setFactionTurnDone = setFactionTurnDone;
   window.returnDashboardMarkingTurn = returnDashboardMarkingTurn;
+  bindTopButtons();
   render();
 })();
