@@ -2232,7 +2232,7 @@ window.render = render;
 // --- Solo UX pass: friendly mobile flow informed by NP Aid + setup sheets ---
 (function installSoloUxPass(){
   const SOLO_CSS_ID = 'solo-ux-pass-styles';
-  const SOLO_BUILD_LABEL = 'solo build v13';
+  const SOLO_BUILD_LABEL = 'solo build v14';
 
   function injectSoloCss(){
     if(document.getElementById(SOLO_CSS_ID)) return;
@@ -2277,6 +2277,14 @@ window.render = render;
       .solo-chip.good{background:#d1fae5;color:#065f46}
       .solo-chip.warn{background:#fef3c7;color:#92400e}
       .solo-chip.done{background:#bbf7d0;color:#166534}
+      .solo-chip.claimed{background:#dbeafe;color:#1e40af}
+      .solo-chip.blocked{background:#e5e7eb;color:#64748b}
+      .turn-order{display:grid;gap:8px;margin-top:12px}
+      .turn-order-step{display:flex;gap:10px;align-items:center;border:1px solid #dbe4ee;background:#fff;border-radius:14px;padding:10px}
+      .turn-order-step.done{background:#f1f5f9;color:#64748b}
+      .turn-order-step.next{border-color:#12213f;box-shadow:0 0 0 2px rgba(18,33,63,.08)}
+      .turn-index{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e2e8f0;font-weight:900;flex:0 0 auto}
+      .turn-order-step.next .turn-index{background:#12213f;color:#fff}
       .solo-rule{border-left:4px solid #2563eb;background:#eff6ff;border-radius:14px;padding:12px 12px 12px 14px}
       .solo-rule b{display:block;margin-bottom:4px}
       .solo-sticky{position:sticky;bottom:10px;z-index:8;background:rgba(245,247,251,.92);backdrop-filter:blur(8px);border:1px solid #dbe4ee;border-radius:18px;padding:10px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
@@ -2285,6 +2293,12 @@ window.render = render;
       .aid-list{margin:0;padding-left:18px;color:#334155;font-size:14px;line-height:1.35}
       .compact-card-row{display:flex;gap:10px;align-items:flex-start}
       .mode-grid{display:grid;grid-template-columns:1fr;gap:10px}
+      .action-claim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .action-claim{border:1px solid #cbd5e1;border-radius:14px;padding:12px;background:#fff}
+      .action-claim.claimed{background:#eff6ff;border-color:#bfdbfe}
+      .action-claim.mine{background:#ecfdf5;border-color:#bbf7d0}
+      .action-claim.blocked{background:#f1f5f9;color:#64748b}
+      .action-claim.selected{box-shadow:0 0 0 2px #12213f;border-color:#12213f}
       @media (min-width:390px){.mode-grid{grid-template-columns:1fr 1fr}}
       @media (max-width:430px){
         .wrap{padding:10px}
@@ -2294,18 +2308,199 @@ window.render = render;
         .solo-pill-row{display:block}
         .solo-chip{display:inline-block;margin:0 4px 6px 0}
         .grid2{grid-template-columns:1fr}
+        .action-claim-grid{grid-template-columns:1fr}
         .btn{font-size:15px;padding:12px}
       }
     `;
     document.head.appendChild(style);
   }
 
+  const POSITION_ACTION_CHOICES = {
+    public_comptroller: ['act','event','event'],
+    public_builder: ['react','act','plan'],
+    public_paternal: ['react','event','act'],
+    public_committed: ['react','act','plan'],
+    public_shepherd: ['react','act','plan'],
+    public_workhorse: ['act','event','plan'],
+    public_provider: ['act','react','event'],
+    public_responsible: ['act','react','event'],
+    community_activist: ['act','event','react'],
+    community_accountable: ['react','event','act'],
+    community_leader: ['react','act','event'],
+    community_dedicated: ['act','react','event'],
+    community_organizer: ['act','react','plan'],
+    community_determined: ['act','event','plan'],
+    community_collaborator: ['react','event','act'],
+    community_independent: ['react','event','act'],
+    private_lender: ['act','react','event'],
+    private_employer: ['act','event','react'],
+    private_buyer: ['act','react','plan'],
+    private_investor: ['react','act','plan'],
+    private_networked: ['react','act','event'],
+    private_loss_leader: ['react','act','plan'],
+    private_volunteer: ['act','react','event'],
+    private_broker: ['act','react','plan'],
+  };
+  const ACTION_LABELS = { act: 'ACT', event: 'EVENT', react: 'REACT', plan: 'PLAN' };
+
   function safeFactionLabel(f){ return factions[f] ? factions[f].label : 'Not chosen'; }
   function selectedCardFor(f){ return f && state.npCards ? cards[f].find(c => c.id === state.npCards[f]) : null; }
   function ensureTurnTracker(){
     state.roundTracker = state.roundTracker || { round: 1, max: 8, critical: null, checked: false, pendingScreen: null };
     state.roundTracker.turnsTaken = state.roundTracker.turnsTaken || {};
+    state.roundTracker.actionClaims = state.roundTracker.actionClaims || {};
     return state.roundTracker.turnsTaken;
+  }
+  function preferredRoundDeck(){
+    ensureTurnTracker();
+    return state.roundTracker.eventDeck || (state.boardState && state.boardState.deck) || '1940s';
+  }
+  function selectedRoundEventPreset(){
+    ensureTurnTracker();
+    const deck = preferredRoundDeck();
+    const key = state.roundTracker.eventKey;
+    return key && EVENT_DECKS[deck] ? EVENT_DECKS[deck][key] : null;
+  }
+  function roundFactionOrder(){
+    ensureTurnTracker();
+    const preset = selectedRoundEventPreset();
+    const order = Array.isArray(state.roundTracker.eventOrder) ? state.roundTracker.eventOrder : (preset ? preset.order : []);
+    return order.filter(f => factions[f]);
+  }
+  function npTurnOrder(){
+    const ordered = roundFactionOrder().filter(f => npFactions().includes(f));
+    return ordered.length ? ordered : npFactions();
+  }
+  function roundEventLabel(){
+    const preset = selectedRoundEventPreset();
+    if(!preset) return 'No event card selected';
+    return `${state.roundTracker.eventKey} • ${preset.title}`;
+  }
+  function roundEventStatusLabel(){
+    const preset = selectedRoundEventPreset();
+    if(!preset) return 'Choose event card';
+    return `${preset.year} • ${state.roundTracker.critical ? 'Critical' : 'Normal'} • ${roundFactionOrder().map(f => factions[f].short).join(' -> ')}`;
+  }
+  function chooseRoundEventDeck(deck){
+    ensureTurnTracker();
+    state.roundTracker.eventDeck = deck;
+    state.roundTracker.eventKey = '';
+    state.roundTracker.eventTitle = '';
+    state.roundTracker.eventOrder = [];
+    state.roundTracker.critical = null;
+    state.roundTracker.checked = false;
+    state.screen = 'round_event';
+    render();
+  }
+  function chooseRoundEventCard(key){
+    ensureTurnTracker();
+    const deck = preferredRoundDeck();
+    const preset = EVENT_DECKS[deck] && EVENT_DECKS[deck][key];
+    if(!preset) return;
+    state.roundTracker.eventDeck = deck;
+    state.roundTracker.eventKey = key;
+    state.roundTracker.eventTitle = preset.title;
+    state.roundTracker.eventYear = preset.year;
+    state.roundTracker.eventOrder = [...preset.order];
+    state.roundTracker.critical = eventCardIsCritical(preset);
+    state.roundTracker.checked = true;
+    state.roundTracker.turnsTaken = {};
+    state.roundTracker.actionClaims = {};
+    if(state.eventProtocol){
+      state.eventProtocol.decade = deck;
+      state.eventProtocol.cardKey = key;
+      state.eventProtocol.card = `${key} • ${preset.title}`;
+      state.eventProtocol.currentStep = 0;
+    }
+    state.screen = 'dashboard';
+    render();
+  }
+  function ensureActionClaims(){
+    ensureTurnTracker();
+    return state.roundTracker.actionClaims;
+  }
+  function cardActionChoices(f){
+    const card = selectedCardFor(f);
+    if(!card) return ['act','event','react','plan'];
+    return POSITION_ACTION_CHOICES[card.id] || ['act','event','react','plan'];
+  }
+  function actionClaimedBy(mode){
+    return ensureActionClaims()[mode] || null;
+  }
+  function actionRoundBlockedReason(mode){
+    if(mode === 'event' && state.roundTracker && state.roundTracker.critical === false) return 'Not critical';
+    return '';
+  }
+  function actionAvailableFor(mode, f){
+    if(actionRoundBlockedReason(mode)) return false;
+    const claimedBy = actionClaimedBy(mode);
+    return !claimedBy || claimedBy === f;
+  }
+  function claimAction(mode, f){
+    if(!mode || !f || !factions[f]) return;
+    const claims = ensureActionClaims();
+    const existing = claims[mode];
+    if(existing && existing !== f) return;
+    claims[mode] = f;
+    render();
+  }
+  function clearActionClaim(mode){
+    if(!mode) return;
+    const claims = ensureActionClaims();
+    delete claims[mode];
+    render();
+  }
+  function togglePlayerActionClaim(mode){
+    if(!state.playerFaction) return;
+    if(actionRoundBlockedReason(mode)) return;
+    const claimedBy = actionClaimedBy(mode);
+    if(claimedBy === state.playerFaction) clearActionClaim(mode);
+    else if(!claimedBy) claimAction(mode, state.playerFaction);
+  }
+  function firstAvailableModeForFaction(f){
+    const choices = cardActionChoices(f);
+    const uniqueChoices = [...new Set(choices)];
+    return uniqueChoices.find(mode => actionAvailableFor(mode, f)) || uniqueChoices[0] || 'act';
+  }
+  function chooseResolverMode(mode){
+    if(!actionAvailableFor(mode, state.selectedFaction)) return;
+    state.mode = mode;
+    render();
+  }
+  function claimSelectedAndResolve(){
+    if(!state.mode || !state.selectedFaction) return;
+    if(!actionAvailableFor(state.mode, state.selectedFaction)){
+      render();
+      return;
+    }
+    const claims = ensureActionClaims();
+    claims[state.mode] = state.selectedFaction;
+    startModeResolution();
+  }
+  function actionClaimSummaryHtml(){
+    const claims = ensureActionClaims();
+    const modes = ['act','event','react','plan'];
+    return `<div class="action-claim-grid">${modes.map(mode => {
+      const claimedBy = claims[mode];
+      const mine = claimedBy && claimedBy === state.playerFaction;
+      const blocked = actionRoundBlockedReason(mode);
+      const cls = blocked ? 'blocked' : (claimedBy ? (mine ? 'mine' : 'claimed') : '');
+      const detail = blocked || (claimedBy ? `Claimed by ${safeFactionLabel(claimedBy)}` : 'Available');
+      const click = state.playerFaction && !blocked ? `togglePlayerActionClaim('${mode}')` : 'void(0)';
+      return `<button class="action-claim ${cls}" onclick="${click}"><div style="font-weight:900">${ACTION_LABELS[mode]}</div><div class="small">${esc(detail)}</div></button>`;
+    }).join('')}</div>`;
+  }
+  function turnOrderHtml(){
+    const order = roundFactionOrder();
+    if(!order.length) return '<div class="muted">Choose this round\'s event card to bake in faction order.</div>';
+    const nextNp = npTurnOrder().find(f => !factionTurnDone(f));
+    return `<div class="turn-order">${order.map((f, idx) => {
+      const isPlayer = f === state.playerFaction;
+      const done = !isPlayer && factionTurnDone(f);
+      const next = f === nextNp;
+      const note = isPlayer ? 'You' : (done ? 'Done this round' : (next ? 'Next NP turn' : 'Waiting'));
+      return `<div class="turn-order-step ${done ? 'done' : ''} ${next ? 'next' : ''}"><div class="turn-index">${idx + 1}</div><div style="min-width:0"><div style="font-weight:900">${safeFactionLabel(f)}</div><div class="small">${esc(note)}</div></div></div>`;
+    }).join('')}</div>`;
   }
   function factionTurnDone(f){
     return !!ensureTurnTracker()[f];
@@ -2319,6 +2514,7 @@ window.render = render;
   }
   function returnDashboardMarkingTurn(){
     if(state.selectedFaction && npFactions().includes(state.selectedFaction)) {
+      if(state.mode) claimAction(state.mode, state.selectedFaction);
       setFactionTurnDone(state.selectedFaction, true);
       return;
     }
@@ -2353,10 +2549,11 @@ window.render = render;
     if(!state.playerFaction) return { label:'Choose player faction', onclick:"state.screen='setup_player'; render()", primary:true, note:'Pick the faction you will play.' };
     const missing = npFactions().find(f => !state.npCards[f]);
     if(missing) return { label:`Choose ${factions[missing].label} card`, onclick:`state.selectedFaction='${missing}'; state.screen='setup_np_card'; render()`, primary:true, note:'Finish the NP card setup.' };
+    if(!selectedRoundEventPreset()) return { label:'Choose event card', onclick:"state.screen='round_event'; render()", primary:true, note:'Bake in this round\'s faction order from the event card.' };
     if(state.roundTracker && state.roundTracker.critical === null) return { label:'Start round: event check', onclick:"state.screen='round_gate'; render()", primary:true, note:'At the start of each round, mark whether the event is critical.' };
-    const nextNp = npFactions().find(f => !factionTurnDone(f));
+    const nextNp = npTurnOrder().find(f => !factionTurnDone(f));
     if(!nextNp) return { label:'End round', onclick:'advanceRound()', primary:true, note:'Both NP factions have taken their turn this round.' };
-    return { label:`Take ${factions[nextNp].label} NP turn`, onclick:`startResolver('${nextNp}')`, primary:true, note:'Resolve ACT, EVENT, REACT, or PLAN from the Position card.' };
+    return { label:`Take ${factions[nextNp].label} NP turn`, onclick:`startResolver('${nextNp}')`, primary:true, note:'Resolve the first unclaimed action from the Position card.' };
   }
   function startSoloWizard(){
     state.screen = state.boardState ? 'setup_player' : 'setup_decade';
@@ -2448,6 +2645,32 @@ window.render = render;
         }).join('')}
       </div>`;
   }
+  function renderRoundEventPicker(app){
+    ensureTurnTracker();
+    const deck = preferredRoundDeck();
+    const cardsForDeck = EVENT_DECKS[deck] || {};
+    const selectedKey = state.roundTracker.eventKey || '';
+    app.innerHTML = `
+      <div class="card solo-hero">
+        <div class="solo-kicker">Round ${state.roundTracker.round}</div>
+        <div class="solo-title">Choose event card</div>
+        <div class="solo-sub">This locks in the faction order printed on the event card for the round.</div>
+      </div>
+      <div class="card">
+        <div class="solo-action-title">Event deck</div>
+        <div class="grid2" style="margin-top:12px">
+          ${btn('1940s', "chooseRoundEventDeck('1940s')", deck === '1940s' ? 'primary' : '')}
+          ${btn('1950s', "chooseRoundEventDeck('1950s')", deck === '1950s' ? 'primary' : '')}
+        </div>
+      </div>
+      <div class="grid">
+        ${Object.entries(cardsForDeck).map(([key, card]) => {
+          const critical = eventCardIsCritical(card);
+          return `<button class="btn ${selectedKey === key ? 'primary' : ''}" onclick="chooseRoundEventCard('${key}')"><div style="font-size:18px;font-weight:900">${key} • ${esc(card.title)}</div><div class="small" style="${selectedKey === key ? 'color:#dbeafe' : ''}">${card.year} • ${critical ? 'Critical' : 'Normal'} • ${card.order.map(f => factions[f].short).join(' -> ')}</div></button>`;
+        }).join('')}
+      </div>
+      <div class="solo-sticky">${btn('Back to dashboard', "state.screen='dashboard'; render()", selectedKey ? 'primary' : '')}</div>`;
+  }
   function renderDashboard(app){
     if(!state.playerFaction){
       renderHome(app);
@@ -2478,6 +2701,15 @@ window.render = render;
         <div class="small" style="margin-top:6px">${doneCount} of ${npFactions().length} NP turns done this round.</div>
         <div class="grid2" style="margin-top:12px">${btn(next.label, next.onclick, 'primary')}${btn('NP Aid', 'openNpAid()', 'secondary')}</div>
       </div>
+      <div class="card">
+        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">Event card</div><div class="solo-action-title">${esc(roundEventLabel())}</div><div class="small">${esc(roundEventStatusLabel())}</div></div></div>
+        ${turnOrderHtml()}
+        <div class="grid2" style="margin-top:12px">${btn(selectedRoundEventPreset() ? 'Change event card' : 'Choose event card', "state.screen='round_event'; render()", selectedRoundEventPreset() ? '' : 'primary')}${btn(state.roundTracker.critical === null ? 'Critical check' : 'Edit critical check', "state.screen='round_gate'; render()", 'secondary')}</div>
+      </div>
+      <div class="card">
+        <div class="row" style="margin-bottom:10px"><div><div class="solo-kicker">Action boxes</div><div class="solo-action-title">One claim per round</div><div class="small">Tap your player action after you take it. NP turns skip claimed boxes.</div></div></div>
+        ${actionClaimSummaryHtml()}
+      </div>
       <div class="card">${boardStateSummaryHtml()}</div>
       <div class="solo-stack">${npCards}</div>
       <div class="card">
@@ -2489,12 +2721,14 @@ window.render = render;
   }
   function renderMode(app){
     const c = selectedCardFor(state.selectedFaction);
-    const modes = [
-      ['act','ACT','Use the ACT box on the Position card.'],
-      ['event','EVENT','Resolve the current Event first.'],
-      ['react','REACT','Skip HOUSE, BUILD, and DEVELOP during REACT.'],
-      ['plan','PLAN','Refresh an Organization if possible, then record the next action.']
-    ];
+    state.mode = actionAvailableFor(state.mode, state.selectedFaction) ? state.mode : firstAvailableModeForFaction(state.selectedFaction);
+    const choiceNotes = {
+      act: 'Use the ACT box on the Position card.',
+      event: state.roundTracker.critical === true ? 'Resolve the selected event card.' : 'Unavailable because this event is not critical.',
+      react: 'Skip HOUSE, BUILD, and DEVELOP during REACT.',
+      plan: 'Refresh an Organization if possible, then record the next action.'
+    };
+    const choices = cardActionChoices(state.selectedFaction);
     app.innerHTML = `
       <div class="card solo-hero">
         <div class="solo-kicker">${safeFactionLabel(state.selectedFaction)} NP turn</div>
@@ -2502,11 +2736,19 @@ window.render = render;
         <div class="solo-sub">${c ? `${esc(c.objective)} • Goal ${c.goal}` : 'This NP needs a Position card before it can act.'}</div>
       </div>
       <div class="mode-grid">
-        ${modes.map(([key,label,note]) => `<button class="btn ${state.mode===key?'primary':''}" onclick="state.mode='${key}'; render()"><div style="font-size:18px">${label}</div><div class="small" style="${state.mode===key?'color:#dbeafe':''}">${note}</div></button>`).join('')}
+        ${choices.map((key, idx) => {
+          const claimedBy = actionClaimedBy(key);
+          const blocked = actionRoundBlockedReason(key);
+          const available = actionAvailableFor(key, state.selectedFaction);
+          const selected = state.mode === key && available;
+          const detail = blocked || (claimedBy && claimedBy !== state.selectedFaction ? `Claimed by ${safeFactionLabel(claimedBy)}` : choiceNotes[key]);
+          const cls = selected ? 'primary' : (!available ? 'ghost' : '');
+          return `<button class="btn ${cls}" onclick="${available ? `chooseResolverMode('${key}')` : 'void(0)'}"><div class="row" style="gap:8px"><div><div style="font-size:18px">Choice ${idx + 1}: ${ACTION_LABELS[key]}</div><div class="small" style="${selected ? 'color:#dbeafe' : ''}">${esc(detail)}</div></div>${selected ? '<span class="badge">Selected</span>' : ''}</div></button>`;
+        }).join('')}
       </div>
       <div class="card">
         <div class="solo-rule"><b>NP Aid reminder</b>Only perform legal actions. If choices remain, use the NP General Priorities chart and the acting faction's principles.</div>
-        <div class="grid2" style="margin-top:12px">${btn('Resolve selected mode','startModeResolution()','primary')}${btn('NP Aid','openNpAid()','secondary')}</div>
+        <div class="grid2" style="margin-top:12px">${btn(`Claim ${ACTION_LABELS[state.mode] || 'ACTION'} and resolve`,'claimSelectedAndResolve()','primary')}${btn('NP Aid','openNpAid()','secondary')}</div>
       </div>`;
   }
   function renderNpAid(app){
@@ -2539,6 +2781,7 @@ window.render = render;
   back = function(){
     if(state.screen === 'np_aid'){ closeNpAid(); return; }
     if(state.screen === 'setup_decade'){ state.screen = 'home'; render(); return; }
+    if(state.screen === 'round_event'){ state.screen = 'dashboard'; render(); return; }
     __oldBackSoloUx();
   };
 
@@ -2548,6 +2791,10 @@ window.render = render;
     state.previousScreen = null;
     ensureTurnTracker();
     state.roundTracker.turnsTaken = {};
+    state.roundTracker.actionClaims = {};
+    state.roundTracker.eventKey = '';
+    state.roundTracker.eventTitle = '';
+    state.roundTracker.eventOrder = [];
     state.screen = 'home';
     render();
   };
@@ -2557,6 +2804,10 @@ window.render = render;
     __oldAdvanceRoundSoloUx();
     ensureTurnTracker();
     state.roundTracker.turnsTaken = {};
+    state.roundTracker.actionClaims = {};
+    state.roundTracker.eventKey = '';
+    state.roundTracker.eventTitle = '';
+    state.roundTracker.eventOrder = [];
   };
 
   const __oldLoadBoardSetupPresetSoloUx = loadBoardSetupPreset;
@@ -2564,6 +2815,34 @@ window.render = render;
     __oldLoadBoardSetupPresetSoloUx(key);
     ensureTurnTracker();
     state.roundTracker.turnsTaken = {};
+    state.roundTracker.actionClaims = {};
+    state.roundTracker.eventDeck = state.boardState && state.boardState.deck ? state.boardState.deck : preferredRoundDeck();
+    state.roundTracker.eventKey = '';
+    state.roundTracker.eventTitle = '';
+    state.roundTracker.eventOrder = [];
+  };
+
+  const __oldStartResolverSoloUx = startResolver;
+  startResolver = function(f){
+    state.selectedFaction = f;
+    resetResolverState();
+    state.resolverCandidates = [];
+    state.resolverPool = [...DISTRICTS];
+    if(state.roundTracker && !selectedRoundEventPreset()){
+      state.roundTracker.pendingScreen = 'mode';
+      state.screen = 'round_event';
+      render();
+      return;
+    }
+    state.mode = firstAvailableModeForFaction(f);
+    if(state.roundTracker && state.roundTracker.critical === null){
+      state.roundTracker.pendingScreen = 'mode';
+      state.screen = 'round_gate';
+      render();
+      return;
+    }
+    state.screen = 'mode';
+    render();
   };
 
   beginSoloSetup = function(){ startSoloWizard(); };
@@ -2577,6 +2856,7 @@ window.render = render;
     if(state.screen === 'setup_decade'){ renderDecadeSetup(app); return; }
     if(state.screen === 'setup_player'){ renderPlayerSetup(app); return; }
     if(state.screen === 'setup_np_card'){ renderCardSetup(app); return; }
+    if(state.screen === 'round_event'){ renderRoundEventPicker(app); return; }
     if(state.screen === 'dashboard'){ renderDashboard(app); return; }
     if(state.screen === 'mode'){ renderMode(app); return; }
     if(state.screen === 'np_aid'){ renderNpAid(app); return; }
@@ -2600,12 +2880,18 @@ window.render = render;
   window.resetAll = resetAll;
   window.advanceRound = advanceRound;
   window.loadBoardSetupPreset = loadBoardSetupPreset;
+  window.startResolver = startResolver;
   window.beginSoloSetup = beginSoloSetup;
   window.startSoloWizard = startSoloWizard;
   window.chooseSoloDecade = chooseSoloDecade;
   window.skipSoloDecade = skipSoloDecade;
   window.openNpAid = openNpAid;
   window.closeNpAid = closeNpAid;
+  window.chooseRoundEventDeck = chooseRoundEventDeck;
+  window.chooseRoundEventCard = chooseRoundEventCard;
+  window.chooseResolverMode = chooseResolverMode;
+  window.togglePlayerActionClaim = togglePlayerActionClaim;
+  window.claimSelectedAndResolve = claimSelectedAndResolve;
   window.setFactionTurnDone = setFactionTurnDone;
   window.returnDashboardMarkingTurn = returnDashboardMarkingTurn;
   render();
